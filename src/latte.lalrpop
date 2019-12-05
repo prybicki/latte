@@ -1,0 +1,119 @@
+use std::str::FromStr;
+use crate::ast::*;
+
+// TODO make sure all panics at least print ERROR
+
+grammar;
+
+pub GInteger: IntLit = {
+    <s: r"[+,-]"?> <v:r"[0-9]+"> => {
+        // panic possible here
+        let val = i32::from_str(v).unwrap();
+        match s {
+            Some("-") => IntLit(-val),
+            _ => IntLit(val)
+        }
+    }
+}
+
+pub GBoolean: BoolLit = {
+    "true" => BoolLit(true),
+    "false" => BoolLit(false)
+}
+
+pub GString: StrLit = {
+    <s:r#""([^,",\\]|\\")*""#> => StrLit(s[1..s.len()-1].replace(r#"\""#, r#"""#))
+}
+
+Tier<Op,NextTier>: Box<Expr> = {
+    Tier<Op,NextTier> Op NextTier => Box::new(Expr::Op(<>)),
+    NextTier
+};
+
+GOperandOr: BinaryOp = {
+    "||" => BinaryOp::Boolean(BOp::Or)
+}
+
+GOperandAnd: BinaryOp = {
+    "&&" => BinaryOp::Boolean(BOp::And)
+}
+
+GOperandRel: BinaryOp = {
+    "<" => BinaryOp::Boolean(BOp::Lt),
+    "<=" => BinaryOp::Boolean(BOp::Lte),
+    ">" => BinaryOp::Boolean(BOp::Gt),
+    ">=" => BinaryOp::Boolean(BOp::Gte),
+}
+
+GExprOr: Box<Expr> = {
+    <l:GExprAnd> <op:GOperandOr> <r:GExprOr> => Box::new(Expr::Binary(l, op, r)),
+    GExprAnd
+}
+
+GExprAnd: Box<Expr> = {
+    <l:GExprRel> <op:GOperandAnd> <r:GExprAnd> => Box::new(Expr::Binary(l, op, r)),
+    GExprRel
+}
+
+pub GExprRel: Box<Expr> = {
+    <l:GExprRel> <op:GOperandRel> <r:GExprAtom> => Box::new(Expr::Binary(l, op, r)),
+    <GExprAtom>
+}
+
+GExprAtom: Box<Expr> = {
+    <v:GInteger> => Box::new(Expr::Int(v))
+}
+
+// TODO finish rest of expression, maybe change AST
+
+// https://www.mimuw.edu.pl/~ben/Zajecia/Mrj2018/Latte/
+// GExprAdd...
+
+
+
+
+
+
+//
+//GOp1: Op = {
+//    "+" => Op::Add,
+//    "-" => Op::Sub,
+//};
+//
+//GOp2: Op = {
+//    "*" => Op::Mul,
+//    "/" => Op::Div,
+//};
+//
+//GExp1: Box<Exp> = {
+//    <l:GExp2> "+" <r:GExp1> => Box::new(Exp::Exp(l, Op::Add, r)),
+//    <GExp2>,
+//}
+//
+//GExp2: Box<Exp> = {
+//    <l:GExp2> "-" <r:GExp3> => Box::new(Exp::Exp(l, Op::Sub, r)),
+//    GExp3,
+//}
+//
+//GExp3: Box<Exp> = {
+//    <GExp3> <GOp2> <GTerm> => Box::new(Exp::Exp(<>)),
+//    <GTerm>,
+//}
+//
+//GTerm: Box<Exp> = {
+//    GInteger => Box::new(Exp::Lit(<>)),
+//    GIdent => Box::new(Exp::Var(<>)),
+//    "(" <GExp1> ")",
+//};
+//
+//GStmt: Box<Stmt> = {
+//    <GIdent> "=" <GExp1> => Box::new(Stmt::Assignment(<>)),
+//    <GExp1> => Box::new(Stmt::Print(<>)),
+//}
+//
+//pub GProgram: Program = {
+//    <v:(<GStmt> ";")*> <e:GStmt?> => match e {
+//        None => Program(v),
+//        Some(e) => Program({let mut v = v; v.push(e); v}),
+//    },
+//}
