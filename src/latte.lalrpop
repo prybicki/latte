@@ -5,64 +5,113 @@ use crate::ast::*;
 
 grammar;
 
-pub GInteger: IntLit = {
-    <s: r"[+,-]"?> <v:r"[0-9]+"> => {
+GIdent: String = {
+    <s:r"([A-Z]|[a-z]|[_'])+"> => String::from(s),
+}
+
+pub GInteger: Box<Expr> = {
+    <s: r"[+-]"?> <v:r"[0-9]+"> => {
         // panic possible here
-        let val = i32::from_str(v).unwrap();
-        match s {
-            Some("-") => IntLit(-val),
-            _ => IntLit(val)
-        }
-    }
+        let abs = i32::from_str(v).unwrap();
+        let val = match s {
+            Some("-") => -abs,
+            _ => abs
+        };
+        Box::new(Expr::Int(val))
+    },
 }
 
-pub GBoolean: BoolLit = {
-    "true" => BoolLit(true),
-    "false" => BoolLit(false)
+pub GBoolean: Box<Expr> = {
+    "true" => Box::new(Expr::Bool(true)),
+    "false" => Box::new(Expr::Bool(false))
 }
 
-pub GString: StrLit = {
-    <s:r#""([^,",\\]|\\")*""#> => StrLit(s[1..s.len()-1].replace(r#"\""#, r#"""#))
+pub GString: Box<Expr> = {
+    <s:r#""([^,",\\]|\\")*""#> => {
+        let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
+        Box::new(Expr::Str(escaped))
+    },
 }
 
 Tier<Op,NextTier>: Box<Expr> = {
     Tier<Op,NextTier> Op NextTier => Box::new(Expr::Op(<>)),
-    NextTier
+    NextTier,
 };
 
 GOperandOr: BinaryOp = {
-    "||" => BinaryOp::Boolean(BOp::Or)
+    "||" => BinaryOp::Or,
 }
 
 GOperandAnd: BinaryOp = {
-    "&&" => BinaryOp::Boolean(BOp::And)
+    "&&" => BinaryOp::And,
 }
 
 GOperandRel: BinaryOp = {
-    "<" => BinaryOp::Boolean(BOp::Lt),
-    "<=" => BinaryOp::Boolean(BOp::Lte),
-    ">" => BinaryOp::Boolean(BOp::Gt),
-    ">=" => BinaryOp::Boolean(BOp::Gte),
+    "<" => BinaryOp::Lt,
+    "<=" => BinaryOp::Lte,
+    ">" => BinaryOp::Gt,
+    ">=" => BinaryOp::Gte,
 }
 
-GExprOr: Box<Expr> = {
-    <l:GExprAnd> <op:GOperandOr> <r:GExprOr> => Box::new(Expr::Binary(l, op, r)),
-    GExprAnd
+GOperandAdd: BinaryOp = {
+    "+" => BinaryOp::Add,
+    "-" => BinaryOp::Sub,
 }
 
-GExprAnd: Box<Expr> = {
-    <l:GExprRel> <op:GOperandAnd> <r:GExprAnd> => Box::new(Expr::Binary(l, op, r)),
-    GExprRel
+GOperandMul: BinaryOp = {
+    "*" => BinaryOp::Mul,
+    "/" => BinaryOp::Div,
+    "%" => BinaryOp::Mod,
 }
 
-pub GExprRel: Box<Expr> = {
-    <l:GExprRel> <op:GOperandRel> <r:GExprAtom> => Box::new(Expr::Binary(l, op, r)),
-    <GExprAtom>
+// Left Associative Expression Macro
+LAExprMacro<Op, NextTier>: Box<Expr> = {
+    LAExprMacro<Op,NextTier> Op NextTier => Box::new(Expr::Binary(<>)),
+    NextTier,
+};
+
+// Right Associative Expression Macro
+RAExprMacro<Op, NextTier>: Box<Expr> = {
+    NextTier Op RAExprMacro<Op,NextTier> => Box::new(Expr::Binary(<>)),
+    NextTier,
+};
+
+CommaSeparatedList<T>: Vec<T> = { // (1)
+    <v:(<T> ",")*> <e:T?> => match e { // (2)
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+pub GExpr = GExprOr;
+
+GExprOr  = RAExprMacro<GOperandOr, GExprAnd>;
+GExprAnd = RAExprMacro<GOperandAnd, GExprRel>;
+GExprRel = LAExprMacro<GOperandRel, GExprAdd>;
+GExprAdd = LAExprMacro<GOperandAdd, GExprMul>;
+GExprMul = LAExprMacro<GOperandMul, GExprUnary>;
+
+GExprUnary: Box<Expr> = {
+    "!" <e:GExprAtom> => Box::new(Expr::Unary(UnaryOp::Not, e)),
+    "-" <e:GExprAtom> => Box::new(Expr::Unary(UnaryOp::Neg, e)),
+    GExprAtom => <>,
 }
 
 GExprAtom: Box<Expr> = {
-    <v:GInteger> => Box::new(Expr::Int(v))
+    GInteger => <>,
+    GBoolean => <>,
+    GString => <>,
+    <GIdent> "(" <CommaSeparatedList<GExpr>> ")" => Box::new(Expr::Call(<>)),
+    GIdent => Box::new(Expr::Var(<>)),
+    "(" <GExprOr> ")" => <>,
 }
+
+// function call
+
 
 // TODO finish rest of expression, maybe change AST
 

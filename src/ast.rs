@@ -1,16 +1,5 @@
-use std::fmt::{Debug, Formatter, Error};
-
-#[derive(Debug)]
-pub struct IntLit(pub i32);
-
-#[derive(Debug)]
-pub struct BoolLit(pub bool);
-
-//#[derive(Debug)]
-pub struct StrLit(pub String);
-
-#[derive(Debug)]
-pub struct Ident(pub String);
+use std::fmt::{Display, Debug, Formatter, Error};
+use std::io::Read;
 
 #[derive(Debug)]
 pub enum Type {
@@ -27,7 +16,7 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-pub enum BOp {
+pub enum BinaryOp {
     Or,
     And,
     Eq,
@@ -36,10 +25,6 @@ pub enum BOp {
     Gte,
     Lt,
     Lte,
-}
-
-#[derive(Debug)]
-pub enum AOp {
     Add,
     Sub,
     Mul,
@@ -48,23 +33,67 @@ pub enum AOp {
 }
 
 #[derive(Debug)]
-pub enum BinaryOp {
-    Boolean(BOp),
-    Arithmetic(AOp),
-}
-
-#[derive(Debug)]
 pub enum Expr {
-    Unary(Box<Expr>, UnaryOp),
+    Unary(UnaryOp, Box<Expr>),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    Application(Box<Ident>, Vec<Box<Expr>>),
-    Int(IntLit), // TODO change
+    Call(String, Vec<Box<Expr>>),
+    Int(i32),
+    Bool(bool),
+    Str(String),
+    Var(String),
 }
 
-
-impl Debug for StrLit {
+impl Display for UnaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let StrLit(s) = self;
-        write!(f, "\"{}\"", s)
+        let ch = match self {
+            UnaryOp::Neg => "-",
+            UnaryOp::Not => "!"
+        };
+        write!(f, "{}", ch)
     }
 }
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let ch = match self {
+            BinaryOp::Or => "||",
+            BinaryOp::And => "&&",
+            BinaryOp::Eq => "==",
+            BinaryOp::Neq => "!=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Gte => ">=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Lte => "<=",
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Mod => "%",
+        };
+        write!(f, "{}", ch)
+    }
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            Expr::Unary(op, e) => write!(f, "{}{}", op, e),
+            Expr::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
+            Expr::Call(ident, args) => {
+                let mut args_text = String::new();
+                for arg in args.iter() {
+                    args_text.push_str(&(**arg).to_string());
+                    args_text.push_str(", ");
+                }
+                let args_text = &args_text[0..args_text.len()-2];
+                write!(f, "{}({})", ident, args_text)
+            }
+            Expr::Int(v) => write!(f, "{}", v),
+            Expr::Bool(v) => write!(f, "{}", v),
+            Expr::Str(v) => write!(f, "{}", v),
+            Expr::Var(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+//impl Display for Expr
