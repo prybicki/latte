@@ -1,5 +1,6 @@
-use std::fmt::{Display, Debug, Formatter, Error};
-use std::io::Read;
+use std::fmt::{Display, Formatter, Error};
+
+type Ident = String;
 
 #[derive(Debug)]
 pub enum Type {
@@ -36,11 +37,42 @@ pub enum BinaryOp {
 pub enum Expr {
     Unary(UnaryOp, Box<Expr>),
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    Call(String, Vec<Box<Expr>>),
+    Call(Ident, Vec<Box<Expr>>),
     Int(i32),
     Bool(bool),
     Str(String),
     Var(String),
+}
+
+#[derive(Debug)]
+pub struct VarDecl(pub Type, pub Ident, pub Option<Expr>);
+
+#[derive(Debug)]
+pub struct Block(pub Vec<Stmt>);
+
+#[derive(Debug)]
+pub struct Program(pub Vec<TopDef>);
+
+
+#[derive(Debug)]
+pub enum Stmt {
+    BStmt(Block),
+    Decl(Vec<VarDecl>),
+    Ass(Ident, Expr),
+    Incr(Ident),
+    Decr(Ident),
+    Ret(Expr),
+    VRet,
+    Cond(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    While(Expr, Box<Stmt>),
+    EStmt(Expr),
+}
+
+struct DeclBody(Ident, Option(Expr));
+
+#[derive(Debug)]
+pub enum TopDef {
+    FnDef(Type, String, Vec<VarDecl>, Block)
 }
 
 impl Display for UnaryOp {
@@ -89,7 +121,7 @@ impl Display for Expr {
                 write!(f, "{}({})", ident, args_text)
             }
             Expr::Int(v) => write!(f, "{}", v),
-            Expr::Bool(v) => write!(f, "{}", v),
+            Expr::Bool(v) => write!(f, "b{}", v),
             Expr::Str(v) => write!(f, "{}", v),
             Expr::Var(v) => write!(f, "{}", v),
         }

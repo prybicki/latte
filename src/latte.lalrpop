@@ -5,11 +5,13 @@ use crate::ast::*;
 
 grammar;
 
+// *** EXPRESSIONS ***
+
 GIdent: String = {
     <s:r"([A-Z]|[a-z]|[_'])+"> => String::from(s),
 }
 
-pub GInteger: Box<Expr> = {
+GInteger: Box<Expr> = {
     <s: r"[+-]"?> <v:r"[0-9]+"> => {
         // panic possible here
         let abs = i32::from_str(v).unwrap();
@@ -21,12 +23,12 @@ pub GInteger: Box<Expr> = {
     },
 }
 
-pub GBoolean: Box<Expr> = {
+GBoolean: Box<Expr> = {
     "true" => Box::new(Expr::Bool(true)),
     "false" => Box::new(Expr::Bool(false))
 }
 
-pub GString: Box<Expr> = {
+GString: Box<Expr> = {
     <s:r#""([^,",\\]|\\")*""#> => {
         let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
         Box::new(Expr::Str(escaped))
@@ -76,8 +78,8 @@ RAExprMacro<Op, NextTier>: Box<Expr> = {
     NextTier,
 };
 
-CommaSeparatedList<T>: Vec<T> = { // (1)
-    <v:(<T> ",")*> <e:T?> => match e { // (2)
+GList<T, Sep>: Vec<T> = { // (1)
+    <v:(<T> Sep)*> <e:T?> => match e { // (2)
         None => v,
         Some(e) => {
             let mut v = v;
@@ -87,8 +89,7 @@ CommaSeparatedList<T>: Vec<T> = { // (1)
     }
 };
 
-pub GExpr = GExprOr;
-
+GExpr = GExprOr;
 GExprOr  = RAExprMacro<GOperandOr, GExprAnd>;
 GExprAnd = RAExprMacro<GOperandAnd, GExprRel>;
 GExprRel = LAExprMacro<GOperandRel, GExprAdd>;
@@ -105,64 +106,67 @@ GExprAtom: Box<Expr> = {
     GInteger => <>,
     GBoolean => <>,
     GString => <>,
-    <GIdent> "(" <CommaSeparatedList<GExpr>> ")" => Box::new(Expr::Call(<>)),
     GIdent => Box::new(Expr::Var(<>)),
+    <GIdent> "(" <GList<GExpr, ",">> ")" => Box::new(Expr::Call(<>)),
     "(" <GExprOr> ")" => <>,
 }
 
-// function call
+// *** TOP LEVEL ***
 
+pub GProgram: Program = {
+    GList<GTopDef, ""> => Program(<>),
+};
 
-// TODO finish rest of expression, maybe change AST
+GType: Type = {
+    "int" => Type::Int,
+    "bool" => Type::Bool,
+    "string" => Type::Str,
+    "void" => Type::Void,
+}
 
-// https://www.mimuw.edu.pl/~ben/Zajecia/Mrj2018/Latte/
-// GExprAdd...
+GArg: VarDecl = {
+    <GType> <GIdent> => VarDecl(<>, Option::None),
+};
 
+GTopDef: TopDef = {
+    <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => TopDef::FnDef(<>),
+};
 
+// Semicolon is an integral part of statement, hence empty list separator.
+GBlock: Block = {
+     "{" <GList<GStmt, "">> "}" => Block(<>),
+}
 
+//     <v:(<T> Sep)*> <e:T?> => match e { // (2)
 
+GDeclBody: DeclBody = {
+    <GIdent> <("=" <GExpr>)?> => DeclBody(<>),
+}
 
+GDecl: Vec<VarDecl> = {
+    <typename:GType> <v:GList<GDeclBody, ",">> => {
+        let out = vec![];
+        for body in v.iter() {
+            let (ident, maybe_expr) = body;
+            out.push(VarDecl(typename, ident, maybe_expr))
+        }
+    },
+};
 
-//
-//GOp1: Op = {
-//    "+" => Op::Add,
-//    "-" => Op::Sub,
-//};
-//
-//GOp2: Op = {
-//    "*" => Op::Mul,
-//    "/" => Op::Div,
-//};
-//
-//GExp1: Box<Exp> = {
-//    <l:GExp2> "+" <r:GExp1> => Box::new(Exp::Exp(l, Op::Add, r)),
-//    <GExp2>,
-//}
-//
-//GExp2: Box<Exp> = {
-//    <l:GExp2> "-" <r:GExp3> => Box::new(Exp::Exp(l, Op::Sub, r)),
-//    GExp3,
-//}
-//
-//GExp3: Box<Exp> = {
-//    <GExp3> <GOp2> <GTerm> => Box::new(Exp::Exp(<>)),
-//    <GTerm>,
-//}
-//
-//GTerm: Box<Exp> = {
-//    GInteger => Box::new(Exp::Lit(<>)),
-//    GIdent => Box::new(Exp::Var(<>)),
-//    "(" <GExp1> ")",
-//};
-//
-//GStmt: Box<Stmt> = {
-//    <GIdent> "=" <GExp1> => Box::new(Stmt::Assignment(<>)),
-//    <GExp1> => Box::new(Stmt::Print(<>)),
-//}
-//
-//pub GProgram: Program = {
-//    <v:(<GStmt> ";")*> <e:GStmt?> => match e {
-//        None => Program(v),
-//        Some(e) => Program({let mut v = v; v.push(e); v}),
-//    },
-//}
+GStmt: Stmt = {
+    ";" => Stmt::BStmt(vec![]),
+    <GExpr> ";" => Stmt::EStmt(<>),
+    <GBlock> => Stmt::BStmt(<>),
+    <GDecl> ";" => Stmt::Decl(<>),
+    <GIdent> "=" <GExpr> ";" => Stmt::Ass(<>),
+    <GIdent> "++" ";" => Stmt::Incr(<>),
+    <GIdent> "--" ";" => Stmt::Decr(<>),
+    "return" <GExpr> ";" => Stmt::Ret(<>),
+    "return" ";" => Stmt::VRet,
+    "if" "(" <GExpr> ")" <GStmt> <("else" <GStmt>)?> => Stmt::Cond(<>),
+    "while" "(" <GExpr> ")" <GStmt> => Stmt::While(<>),
+}
+
+// Remove IF ambiguity
+// https://en.wikipedia.org/wiki/Dangling_else#Avoiding_the_conflict_in_LR_parsers
+
