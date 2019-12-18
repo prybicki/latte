@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Error};
 
 type Ident = String;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub enum Type {
     Int,
     Bool,
@@ -45,10 +45,10 @@ pub enum Expr {
 }
 
 #[derive(Debug)]
-pub struct VarDecl(pub Type, pub Ident, pub Option<Expr>);
+pub struct VarDecl(pub Type, pub Ident, pub Option<Box<Expr>>);
 
 #[derive(Debug)]
-pub struct Block(pub Vec<Stmt>);
+pub struct Block(pub Vec<Box<Stmt>>);
 
 #[derive(Debug)]
 pub struct Program(pub Vec<TopDef>);
@@ -58,17 +58,18 @@ pub struct Program(pub Vec<TopDef>);
 pub enum Stmt {
     BStmt(Block),
     Decl(Vec<VarDecl>),
-    Ass(Ident, Expr),
+    Ass(Ident, Box<Expr>),
     Incr(Ident),
     Decr(Ident),
-    Ret(Expr),
+    Ret(Box<Expr>),
     VRet,
-    Cond(Expr, Box<Stmt>, Option<Box<Stmt>>),
-    While(Expr, Box<Stmt>),
-    EStmt(Expr),
+    Cond(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
+    While(Box<Expr>, Box<Stmt>),
+    EStmt(Box<Expr>),
 }
 
-struct DeclBody(Ident, Option(Expr));
+// Helper struct
+pub struct DeclBody(pub Ident, pub Option<Box<Expr>>);
 
 #[derive(Debug)]
 pub enum TopDef {

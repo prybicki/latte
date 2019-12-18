@@ -1,0 +1,14 @@
+# Hash comment
+// Slash comment
+/* Simple multiline comment */
+
+/* Multiline comment with "*/" fake ending */
+/* Multiline with tricky \"*/\" fake ending */
+/* Multiline with trickiest " \"*/\" " fake ending */
+int main() {
+	// some real code here
+	string a = "// this is not a comment";
+	string b = "also not a /* comment */";
+	/* but this is a comment*/;
+}
+

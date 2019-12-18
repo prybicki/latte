@@ -132,12 +132,6 @@ GTopDef: TopDef = {
     <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => TopDef::FnDef(<>),
 };
 
-// Semicolon is an integral part of statement, hence empty list separator.
-GBlock: Block = {
-     "{" <GList<GStmt, "">> "}" => Block(<>),
-}
-
-//     <v:(<T> Sep)*> <e:T?> => match e { // (2)
 
 GDeclBody: DeclBody = {
     <GIdent> <("=" <GExpr>)?> => DeclBody(<>),
@@ -145,28 +139,50 @@ GDeclBody: DeclBody = {
 
 GDecl: Vec<VarDecl> = {
     <typename:GType> <v:GList<GDeclBody, ",">> => {
-        let out = vec![];
-        for body in v.iter() {
-            let (ident, maybe_expr) = body;
+        let mut out = vec![];
+        for body in v.into_iter() {
+            let DeclBody(ident, maybe_expr) = body;
             out.push(VarDecl(typename, ident, maybe_expr))
         }
+        out
     },
 };
 
-GStmt: Stmt = {
-    ";" => Stmt::BStmt(vec![]),
-    <GExpr> ";" => Stmt::EStmt(<>),
-    <GBlock> => Stmt::BStmt(<>),
-    <GDecl> ";" => Stmt::Decl(<>),
-    <GIdent> "=" <GExpr> ";" => Stmt::Ass(<>),
-    <GIdent> "++" ";" => Stmt::Incr(<>),
-    <GIdent> "--" ";" => Stmt::Decr(<>),
-    "return" <GExpr> ";" => Stmt::Ret(<>),
-    "return" ";" => Stmt::VRet,
-    "if" "(" <GExpr> ")" <GStmt> <("else" <GStmt>)?> => Stmt::Cond(<>),
-    "while" "(" <GExpr> ")" <GStmt> => Stmt::While(<>),
+// Semicolon is an integral part of statement, hence empty list separator.
+GBlock: Block = {
+     "{" <GList<GStmt, "">> "}" => Block(<>),
 }
 
-// Remove IF ambiguity
-// https://en.wikipedia.org/wiki/Dangling_else#Avoiding_the_conflict_in_LR_parsers
+// https://en.wikipedia.org/wiki/Dangling_else
+
+GStmt: Box<Stmt> = {
+    <GOpenStmt>   => <>,
+    <GClosedStmt> => <>,
+}
+
+GOpenStmt: Box<Stmt> = {
+    "if" "(" <c:GExpr> ")" <t:GSimpleStmt>                      => Box::new(Stmt::Cond(c, t, Option::None)),
+    "if" "(" <c:GExpr> ")" <t:GOpenStmt>                        => Box::new(Stmt::Cond(c, t, Option::None)),
+    "if" "(" <c:GExpr> ")" <t:GClosedStmt> "else" <f:GOpenStmt> => Box::new(Stmt::Cond(c, t, Option::Some(f))),
+    "while" "(" <c:GExpr> ")" <body:GOpenStmt>                  => Box::new(Stmt::While(c, body)),
+}
+
+GClosedStmt: Box<Stmt> = {
+    <GSimpleStmt>                                                 => <>,
+    "if" "(" <c:GExpr> ")" <t:GClosedStmt> "else" <f:GClosedStmt> => Box::new(Stmt::Cond(c, t, Option::Some(f))),
+    "while" "(" <c:GExpr> ")" <body:GClosedStmt>                  => Box::new(Stmt::While(c, body)),
+}
+
+GSimpleStmt: Box<Stmt> = {
+    ";"                      => Box::new(Stmt::BStmt(Block(vec![]))),
+    <GExpr> ";"              => Box::new(Stmt::EStmt(<>)),
+    <GBlock>                 => Box::new(Stmt::BStmt(<>)),
+    <GDecl> ";"              => Box::new(Stmt::Decl(<>)),
+    <GIdent> "=" <GExpr> ";" => Box::new(Stmt::Ass(<>)),
+    <GIdent> "++" ";"        => Box::new(Stmt::Incr(<>)),
+    <GIdent> "--" ";"        => Box::new(Stmt::Decr(<>)),
+    "return" <GExpr> ";"     => Box::new(Stmt::Ret(<>)),
+    "return" ";"             => Box::new(Stmt::VRet),
+}
+
 
