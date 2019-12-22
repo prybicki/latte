@@ -1,7 +1,24 @@
+use std::fs;
+use std::path::Path;
+use std::error::Error;
+use std::fmt::Write as FmtWrite;
+use std::cell::RefCell;
+use codespan_reporting::diagnostic::Label;
+use codespan_reporting::diagnostic::Diagnostic;
+use termcolor;
 
+pub mod latte;
 pub mod ast;
-#[macro_use] extern crate lalrpop_util;
-lalrpop_mod!(pub latte); // synthesized by LALRPOP
+
+type ParseError<'i> = lalrpop_util::ParseError<usize, latte::Token<'i>, &'static str>;
+
+#[derive(Debug)]
+enum CompilerError {
+    InvalidArgument,
+    FileNotFound{path: Box<Path>},
+    SyntaxError{msg: String},
+    SemanticError{span: (usize, usize), msg: String},
+}
 
 fn remove_comments(text: &str) -> String {
     #[derive(Debug)]
@@ -53,7 +70,7 @@ fn remove_comments(text: &str) -> String {
 //        println!("{} {:?} {:?}", ch, s1, s2);
         output.push(match s1 {
             PrimaryState::InCode => ch,
-            _ => ' ',
+            _ => if ch == '\n' { '\n' } else { ' ' },
 //            PrimaryState::InSingleLineComment => '@',
 //            PrimaryState::AfterForwardSlash => '!',
 //            PrimaryState::InMultiLineComment => '$',
@@ -64,76 +81,100 @@ fn remove_comments(text: &str) -> String {
     return output;
 }
 
-use std::fs;
-fn main() {
-//    let text = String::from(r#"/* Multiline with tricky " \"*/\" fake ending */"#);
-    let text = fs::read_to_string("/home/prybicki/code/latte/lattests/comments.lat").unwrap();
-    println!("{}", remove_comments(&text));
-
-//    loop {
-//        let mut input = String::new();
-//        std::io::stdin().read_line(&mut input).unwrap();
-//        let pattern = &input[0..input.len()-1];
-//        let re = Regex::new(pattern).unwrap();
-//        println!("{:?}", re);
-//        println!("{}", if re.is_match(text) {"Matched"} else {"???"});
-//        let out = re.replace_all(text, "@");
-//        println!("{}", out);
-//    }
-
+struct DiagCtx {
+    out: RefCell<Box<dyn termcolor::WriteColor>>,
+    cfg: codespan_reporting::term::Config,
+    file_db: RefCell<codespan::Files>,
+    file_id: codespan::FileId,
 }
 
+impl DiagCtx {
+    fn new(file_name: &str, file_content: &str) -> DiagCtx {
+        let out = Box::new(termcolor::StandardStream::stderr(termcolor::ColorChoice::Always));
+        let cfg = codespan_reporting::term::Config::default();
+        let mut file_db = codespan::Files::default();
+        let file_id = file_db.add(file_name, file_content);
+        DiagCtx{out: RefCell::new(out), cfg, file_db: RefCell::new(file_db), file_id}
+    }
+}
 
-//# Comment
+fn render_syntax_error(ctx: DiagCtx, err: ParseError) -> String
+{
+    let (tb, te) = match err {
+        ParseError::InvalidToken{location: l} => (l, l),
+        ParseError::UnrecognizedEOF{location: l, ..} => (l, l),
+        ParseError::UnrecognizedToken{token: (b, .., e), ..} => (b, e),
+        ParseError::ExtraToken{token: (b, .., e)} => (b, e),
+        _ => panic!("unexpected parser error")
+    };
+
+
+    let label = Label::new(ctx.file_id, codespan::Span::new(tb as u32, te as u32), "tomdidomdidom");
+    let diag = Diagnostic::new_error("zjebalo sie", label);
+    codespan_reporting::term::emit(ctx.out.borrow_mut().as_mut(), &ctx.cfg, &ctx.file_db.borrow(), &diag);
+
+//    let (tb, te) = (tb as i32, te as i32);
 //
-//int main() {
-//print("Hello world /*");
-//}
-//
-//;;;
-///* print("Hello world */");
-//    */
-//    // Another comment
-//    let parser = latte::GProgramParser::new();
-//    loop {
-//        let mut text = String::new();
-//        std::io::stdin().read_line(&mut text).unwrap();
-//        let ast = parser.parse(&text);
-//        println!("{:?}", ast.unwrap())
-//        let ast = text[1..text.len()-1].replace("\\\"", "\"");
-//        println!("{}", ast);
-//    }
-//fn remove_comments(text: &str) -> String {
-////    enum State {
-////        NoComment,
-////        MultiLineComment
-////
-//    };
-////    let state = State::NoComment;
-//    let mut out = String::new();
-//    let pos = 0;
-//    loop {
-////        let  = text[pos..len(text)].find("//");
-//        let next_comment = text[pos..len(text)].find("#|//|/*|");
-//        if let Some(n) = next_comment {
-//            pos = n;
+//    let mut lb: i32 = 0;
+//    let mut le: i32 = -1;
+//    for (i, line) in source.lines().enumerate() {
+//        lb = le + 1; // Assuming LF
+//        le = lb + line.bytes().count() as i32;
+//        if lb <= tb && te < le {
+//            println!("{}: {} ({})", lb, line, le);
 //        }
 //    }
 //
-//    return out;
-//}
+    return "".to_owned();
+}
 
-//fn parse(text: &str) {
-//    for ch in text.chars() {
-//
-//    }
-//    let parser = latte::GProgramParser::new();
-//}
+fn run() -> Result<(), CompilerError> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        return Err(CompilerError::InvalidArgument)
+    }
+    let path = Box::from(Path::new(&args[1]));
+
+    let source = match fs::read_to_string(&path) {
+        Err(_) => return Err(CompilerError::FileNotFound{path}),
+        Ok(v) => v
+    };
+
+    let stripped = remove_comments(&source);
+    let diag_ctx = DiagCtx::new(path.to_str().unwrap(), &source);
+
+    let ast = match latte::GProgramParser::new().parse(&stripped) {
+        Err(e) => {
+            let msg = render_syntax_error(diag_ctx, e);
+            return Err(CompilerError::SyntaxError{msg});
+        },
+        Ok(v) => v
+    };
+
+    println!("{:?}", ast);
+
+    Ok(())
+}
+
+fn main() {
+    match run() {
+        Err(e) => {
+            println!("ERROR");
+            println!();
+            println!("{:?}", e); // TODO
+            std::process::exit(1);
+        },
+        Ok(_) => {
+            println!("OK");
+            std::process::exit(0);
+        }
+    }
+}
 
 #[test]
 fn good() {
     let list = [
-        "./lattests/good/core001.lat",
+//      "./lattests/good/core001.lat",
         "./lattests/good/core002.lat",
         "./lattests/good/core003.lat",
         "./lattests/good/core004.lat",
@@ -157,14 +198,13 @@ fn good() {
         "./lattests/good/core022.lat",
     ];
 
-    println!("kotek");
-    let parser = latte::GProgramParser::new();
-    for item in list.iter() {
-        let text = fs::read_to_string(item).unwrap();
-        let ast = parser.parse(&text);
-        match ast {
-            Ok(_) => println!("{} OK", item),
-            Err(e) => println!("{} Error: {}", item, e),
+    for &item in list.iter() {
+        let input = fs::read_to_string(Path::new(item)).expect("test file not found");
+        let code = remove_comments(&input);
+        for (idx, line) in code.split('\n').enumerate() {
+            println!("{}: {}", idx, line);
         }
+        let result = latte::GProgramParser::new().parse(&code);
+        assert!(result.is_ok(), "{}: {}", item, result.unwrap_err());
     }
 }
