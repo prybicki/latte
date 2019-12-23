@@ -10,6 +10,13 @@ lalrpop_mod!(pub latte);
 
 pub mod ast;
 
+// TODO: comments are required to be closed!
+// main exists
+// variable visibility
+// type correctness
+
+
+
 type ParseError<'i> = lalrpop_util::ParseError<usize, latte::Token<'i>, &'static str>;
 
 struct Context {
@@ -38,7 +45,6 @@ impl Context {
         ).unwrap() // TODO
     }
 }
-
 
 // cannot be a trait due to https://github.com/rust-lang/rfcs/blob/master/text/1023-rebalancing-coherence.md
 fn parse_error_to_diagnostic(err: ParseError, file_id: codespan::FileId) -> Diagnostic {
@@ -120,6 +126,10 @@ fn remove_comments(text: &str) -> String {
     return output;
 }
 
+fn static_check(ast: &mut ast::Program, errors: &mut Vec<Diagnostic>) {
+    // TODO :)
+}
+
 fn compile(ctx: &Context) -> Result<(), Vec<Diagnostic>> {
     let stripped = remove_comments(ctx.file_db.borrow().source(ctx.file_id));
     let ast = match latte::GProgramParser::new().parse(&stripped) {
@@ -159,37 +169,44 @@ fn main() {
     }
 }
 
+
+fn test_case(path: &str, expect_success: bool) -> bool {
+    eprint!("{} => ", path);
+    let success: bool;
+    let ctx = Context::new(&path).unwrap();
+    let result = compile(&ctx);
+    match compile(&ctx) {
+        Err(_) => success = !expect_success,
+        Ok(_) => success = expect_success,
+    }
+
+    eprintln!("{}", if success { "OK" } else { "ERR" });
+
+    if let Err(vec) = result {
+        for diag in vec.iter() {
+            ctx.print(diag);
+        }
+    }
+    return success;
+}
+
 #[test]
 fn good() {
-    let list = [
-        "./lattests/good/core001.lat",
-        "./lattests/good/core002.lat",
-        "./lattests/good/core003.lat",
-        "./lattests/good/core004.lat",
-        "./lattests/good/core005.lat",
-        "./lattests/good/core006.lat",
-        "./lattests/good/core007.lat",
-        "./lattests/good/core008.lat",
-        "./lattests/good/core009.lat",
-        "./lattests/good/core010.lat",
-        "./lattests/good/core011.lat",
-        "./lattests/good/core012.lat",
-        "./lattests/good/core013.lat",
-        "./lattests/good/core014.lat",
-        "./lattests/good/core015.lat",
-        "./lattests/good/core016.lat",
-        "./lattests/good/core017.lat",
-        "./lattests/good/core018.lat",
-        "./lattests/good/core019.lat",
-        "./lattests/good/core020.lat",
-        "./lattests/good/core021.lat",
-        "./lattests/good/core022.lat",
-    ];
-
-    for &item in list.iter() {
-        let ctx = Context::new(item).unwrap();
-        let result = compile(&ctx);
-        assert!(result.is_ok(), "{}: {:?}", item, result.unwrap_err());
-        println!("OK {}", item);
+    let mut success = true;
+    for i in 1..=22 {
+        let path = format!("./lattests/good/core{:03}.lat", i);
+        success &= test_case(&path, true);
     }
+    assert!(success);
+}
+
+#[test]
+fn bad() {
+    let mut success = true;
+    for i in 1..=27 {
+        if i == 14 {continue}
+        let path = format!("./lattests/bad/bad{:03}.lat", i);
+        success &= test_case(&path, false);
+    }
+    assert!(success);
 }
