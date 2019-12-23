@@ -8,7 +8,7 @@ grammar;
 // *** EXPRESSIONS ***
 
 GIdent: String = {
-    <s:r"([A-Z]|[a-z]|[_'])+"> => String::from(s),
+    <s:r"[A-Za-z_'][A-Za-z0-9_']*"> => String::from(s),
 }
 
 GInteger: Box<Expr> = {
@@ -53,6 +53,8 @@ GOperandRel: BinaryOp = {
     "<=" => BinaryOp::Lte,
     ">" => BinaryOp::Gt,
     ">=" => BinaryOp::Gte,
+    "==" => BinaryOp::Eq,
+    "!=" => BinaryOp::Neq,
 }
 
 GOperandAdd: BinaryOp = {
@@ -114,12 +116,12 @@ GExprAtom: Box<Expr> = {
 // *** TOP LEVEL ***
 
 pub GProgram: Program = {
-    GList<GTopDef, ""> => Program(<>),
+    <GTopDef+> => Program(<>)
 };
 
 GType: Type = {
     "int" => Type::Int,
-    "bool" => Type::Bool,
+    "boolean" => Type::Bool,
     "string" => Type::Str,
     "void" => Type::Void,
 }
@@ -150,7 +152,7 @@ GDecl: Vec<VarDecl> = {
 
 // Semicolon is an integral part of statement, hence empty list separator.
 GBlock: Block = {
-     "{" <GList<GStmt, "">> "}" => Block(<>),
+     "{" <GStmt*> "}" => Block(<>),
 }
 
 // https://en.wikipedia.org/wiki/Dangling_else

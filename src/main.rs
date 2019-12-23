@@ -1,23 +1,67 @@
 use std::fs;
 use std::path::Path;
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
 use std::cell::RefCell;
-use codespan_reporting::diagnostic::Label;
 use codespan_reporting::diagnostic::Diagnostic;
 use termcolor;
+use std::io;
 
-pub mod latte;
+#[macro_use] extern crate lalrpop_util;
+lalrpop_mod!(pub latte);
+
 pub mod ast;
 
 type ParseError<'i> = lalrpop_util::ParseError<usize, latte::Token<'i>, &'static str>;
 
-#[derive(Debug)]
-enum CompilerError {
-    InvalidArgument,
-    FileNotFound{path: Box<Path>},
-    SyntaxError{msg: String},
-    SemanticError{span: (usize, usize), msg: String},
+struct Context {
+    out: RefCell<Box<dyn termcolor::WriteColor>>,
+    cfg: codespan_reporting::term::Config,
+    file_db: RefCell<codespan::Files>,
+    file_id: codespan::FileId,
+}
+
+impl Context {
+    fn new(file_name: &str) -> Result<Context, io::Error> {
+        let mut file_db = codespan::Files::default();
+        let file_content = fs::read_to_string(Path::new(file_name))?;
+        let file_id = file_db.add(file_name, file_content);
+        let out = Box::new(termcolor::StandardStream::stderr(termcolor::ColorChoice::Always));
+        let cfg = codespan_reporting::term::Config::default();
+        Ok(Context{out: RefCell::new(out), cfg, file_db: RefCell::new(file_db), file_id})
+    }
+
+    fn print(&self, diagnostic: &Diagnostic) {
+        codespan_reporting::term::emit(
+            self.out.borrow_mut().as_mut(),
+            &self.cfg,
+            &self.file_db.borrow(),
+            &diagnostic
+        ).unwrap() // TODO
+    }
+}
+
+
+// cannot be a trait due to https://github.com/rust-lang/rfcs/blob/master/text/1023-rebalancing-coherence.md
+fn parse_error_to_diagnostic(err: ParseError, file_id: codespan::FileId) -> Diagnostic {
+    let (comment, (b, e)) = match err {
+        ParseError::InvalidToken{location: l} => {
+            ("invalid token".to_owned(), (l, l))
+        },
+        ParseError::UnrecognizedEOF{location: l, ..} => {
+            ("unexpected eof".to_owned(), (l, l))
+        },
+        ParseError::UnrecognizedToken{token: (b, latte::Token(_, token_str), e), expected: exp_vec} => {
+            // TODO pretty print of exp_vec
+            (format!("unrecognized token: {:?}, expected one of: {:?}", token_str, exp_vec), (b, e))
+        },
+        ParseError::ExtraToken{token: (b, latte::Token(_, token_str), e)} => {
+            (format!("unexpected additional token: {}", token_str), (b, e))
+        },
+        _ => panic!("undefined parser error")
+    };
+    let (b, e) = (b as u32, e as u32);
+    let label = codespan_reporting::diagnostic::Label::new(
+        file_id, codespan::Span::new(b, e),&comment);
+    return Diagnostic::new_error("syntax error", label);
 }
 
 fn remove_comments(text: &str) -> String {
@@ -67,101 +111,45 @@ fn remove_comments(text: &str) -> String {
                 (_,_) => (),
             }
         }
-//        println!("{} {:?} {:?}", ch, s1, s2);
         output.push(match s1 {
             PrimaryState::InCode => ch,
             _ => if ch == '\n' { '\n' } else { ' ' },
-//            PrimaryState::InSingleLineComment => '@',
-//            PrimaryState::AfterForwardSlash => '!',
-//            PrimaryState::InMultiLineComment => '$',
-//            PrimaryState::InMultiLineAfterAsterisk => '%'
         });
     }
 
     return output;
 }
 
-struct DiagCtx {
-    out: RefCell<Box<dyn termcolor::WriteColor>>,
-    cfg: codespan_reporting::term::Config,
-    file_db: RefCell<codespan::Files>,
-    file_id: codespan::FileId,
-}
-
-impl DiagCtx {
-    fn new(file_name: &str, file_content: &str) -> DiagCtx {
-        let out = Box::new(termcolor::StandardStream::stderr(termcolor::ColorChoice::Always));
-        let cfg = codespan_reporting::term::Config::default();
-        let mut file_db = codespan::Files::default();
-        let file_id = file_db.add(file_name, file_content);
-        DiagCtx{out: RefCell::new(out), cfg, file_db: RefCell::new(file_db), file_id}
-    }
-}
-
-fn render_syntax_error(ctx: DiagCtx, err: ParseError) -> String
-{
-    let (tb, te) = match err {
-        ParseError::InvalidToken{location: l} => (l, l),
-        ParseError::UnrecognizedEOF{location: l, ..} => (l, l),
-        ParseError::UnrecognizedToken{token: (b, .., e), ..} => (b, e),
-        ParseError::ExtraToken{token: (b, .., e)} => (b, e),
-        _ => panic!("unexpected parser error")
-    };
-
-
-    let label = Label::new(ctx.file_id, codespan::Span::new(tb as u32, te as u32), "tomdidomdidom");
-    let diag = Diagnostic::new_error("zjebalo sie", label);
-    codespan_reporting::term::emit(ctx.out.borrow_mut().as_mut(), &ctx.cfg, &ctx.file_db.borrow(), &diag);
-
-//    let (tb, te) = (tb as i32, te as i32);
-//
-//    let mut lb: i32 = 0;
-//    let mut le: i32 = -1;
-//    for (i, line) in source.lines().enumerate() {
-//        lb = le + 1; // Assuming LF
-//        le = lb + line.bytes().count() as i32;
-//        if lb <= tb && te < le {
-//            println!("{}: {} ({})", lb, line, le);
-//        }
-//    }
-//
-    return "".to_owned();
-}
-
-fn run() -> Result<(), CompilerError> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        return Err(CompilerError::InvalidArgument)
-    }
-    let path = Box::from(Path::new(&args[1]));
-
-    let source = match fs::read_to_string(&path) {
-        Err(_) => return Err(CompilerError::FileNotFound{path}),
-        Ok(v) => v
-    };
-
-    let stripped = remove_comments(&source);
-    let diag_ctx = DiagCtx::new(path.to_str().unwrap(), &source);
-
+fn compile(ctx: &Context) -> Result<(), Vec<Diagnostic>> {
+    let stripped = remove_comments(ctx.file_db.borrow().source(ctx.file_id));
     let ast = match latte::GProgramParser::new().parse(&stripped) {
-        Err(e) => {
-            let msg = render_syntax_error(diag_ctx, e);
-            return Err(CompilerError::SyntaxError{msg});
-        },
+        Err(err) => return Err(vec![parse_error_to_diagnostic(err, ctx.file_id)]),
         Ok(v) => v
     };
-
-    println!("{:?}", ast);
-
     Ok(())
 }
 
+fn die(msg: &str) -> ! {
+    println!("ERROR\n");
+    println!("{}", msg);
+    std::process::exit(1);
+}
+
 fn main() {
-    match run() {
-        Err(e) => {
-            println!("ERROR");
-            println!();
-            println!("{:?}", e); // TODO
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 { die(&format!("expected 1 argument, got {}", args.len()-1)) }
+
+    let ctx = match Context::new(&args[1]) {
+        Err(err) => die(&format!("error while reading file: {}", err)),
+        Ok(v) => v,
+    };
+
+    match compile(&ctx) {
+        Err(diags) => {
+            println!("ERROR\n");
+            for diag in diags.iter() {
+                ctx.print(diag);
+            }
             std::process::exit(1);
         },
         Ok(_) => {
@@ -174,7 +162,7 @@ fn main() {
 #[test]
 fn good() {
     let list = [
-//      "./lattests/good/core001.lat",
+        "./lattests/good/core001.lat",
         "./lattests/good/core002.lat",
         "./lattests/good/core003.lat",
         "./lattests/good/core004.lat",
@@ -199,12 +187,9 @@ fn good() {
     ];
 
     for &item in list.iter() {
-        let input = fs::read_to_string(Path::new(item)).expect("test file not found");
-        let code = remove_comments(&input);
-        for (idx, line) in code.split('\n').enumerate() {
-            println!("{}: {}", idx, line);
-        }
-        let result = latte::GProgramParser::new().parse(&code);
-        assert!(result.is_ok(), "{}: {}", item, result.unwrap_err());
+        let ctx = Context::new(item).unwrap();
+        let result = compile(&ctx);
+        assert!(result.is_ok(), "{}: {:?}", item, result.unwrap_err());
+        println!("OK {}", item);
     }
 }
