@@ -131,9 +131,8 @@ GArg: VarDecl = {
 };
 
 GTopDef: TopDef = {
-    <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => TopDef::FnDef(<>),
+    <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => TopDef(<>),
 };
-
 
 GDeclBody: DeclBody = {
     <GIdent> <("=" <GExpr>)?> => DeclBody(<>),
@@ -150,7 +149,6 @@ GDecl: Vec<VarDecl> = {
     },
 };
 
-// Semicolon is an integral part of statement, hence empty list separator.
 GBlock: Block = {
      "{" <GStmt*> "}" => Block(<>),
 }

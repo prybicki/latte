@@ -1,169 +1,70 @@
-use std::fs;
-use std::path::Path;
-use std::cell::RefCell;
-use codespan_reporting::diagnostic::Diagnostic;
-use termcolor;
-use std::io;
+
+pub mod ast;
+pub mod diag;
+pub mod frontend;
 
 #[macro_use] extern crate lalrpop_util;
 lalrpop_mod!(pub latte);
+pub type ParseError<'i> = lalrpop_util::ParseError<usize, latte::Token<'i>, &'static str>;
 
-pub mod ast;
+use std::fs;
+use std::io;
+use std::path::Path;
 
-// TODO: comments are required to be closed!
-// main exists
-// variable visibility
-// type correctness
-
-
-
-type ParseError<'i> = lalrpop_util::ParseError<usize, latte::Token<'i>, &'static str>;
-
-struct Context {
-    out: RefCell<Box<dyn termcolor::WriteColor>>,
-    cfg: codespan_reporting::term::Config,
-    file_db: RefCell<codespan::Files>,
-    file_id: codespan::FileId,
+pub struct File {
+    file_db: codespan::Files, // works only for single file
+    file_id: codespan::FileId, // codespan is broken
 }
 
-impl Context {
-    fn new(file_name: &str) -> Result<Context, io::Error> {
+impl File {
+    pub fn new(name: &str) -> Result<File, io::Error> {
+        let content = fs::read_to_string(Path::new(name))?;
         let mut file_db = codespan::Files::default();
-        let file_content = fs::read_to_string(Path::new(file_name))?;
-        let file_id = file_db.add(file_name, file_content);
-        let out = Box::new(termcolor::StandardStream::stderr(termcolor::ColorChoice::Always));
-        let cfg = codespan_reporting::term::Config::default();
-        Ok(Context{out: RefCell::new(out), cfg, file_db: RefCell::new(file_db), file_id})
+        let file_id = file_db.add(name, content);
+        Ok(File {file_db, file_id})
     }
 
-    fn print(&self, diagnostic: &Diagnostic) {
-        codespan_reporting::term::emit(
-            self.out.borrow_mut().as_mut(),
-            &self.cfg,
-            &self.file_db.borrow(),
-            &diagnostic
-        ).unwrap() // TODO
-    }
+    pub fn get_content(&self) -> &str { self.file_db.source(self.file_id) }
 }
 
-// cannot be a trait due to https://github.com/rust-lang/rfcs/blob/master/text/1023-rebalancing-coherence.md
-fn parse_error_to_diagnostic(err: ParseError, file_id: codespan::FileId) -> Diagnostic {
-    let (comment, (b, e)) = match err {
-        ParseError::InvalidToken{location: l} => {
-            ("invalid token".to_owned(), (l, l))
-        },
-        ParseError::UnrecognizedEOF{location: l, ..} => {
-            ("unexpected eof".to_owned(), (l, l))
-        },
-        ParseError::UnrecognizedToken{token: (b, latte::Token(_, token_str), e), expected: exp_vec} => {
-            // TODO pretty print of exp_vec
-            (format!("unrecognized token: {:?}, expected one of: {:?}", token_str, exp_vec), (b, e))
-        },
-        ParseError::ExtraToken{token: (b, latte::Token(_, token_str), e)} => {
-            (format!("unexpected additional token: {}", token_str), (b, e))
-        },
-        _ => panic!("undefined parser error")
-    };
-    let (b, e) = (b as u32, e as u32);
-    let label = codespan_reporting::diagnostic::Label::new(
-        file_id, codespan::Span::new(b, e),&comment);
-    return Diagnostic::new_error("syntax error", label);
-}
+fn compile(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
+    let stripped = frontend::remove_comments(file.get_content());
 
-fn remove_comments(text: &str) -> String {
-    #[derive(Debug)]
-    enum PrimaryState {
-        InCode,
-        AfterForwardSlash,
-        InSingleLineComment,
-        InMultiLineComment,
-        InMultiLineAfterAsterisk,
-    };
-    #[derive(Debug)]
-    enum SecondaryState {
-        NotInString,
-        InString,
-        InStringAfterEscape,
-    };
-    let mut s1 = PrimaryState::InCode;
-    let mut s2 = SecondaryState::NotInString;
-    let mut output = String::new();
-    for ch in text.chars() {
-        match (&s2, ch) {
-            (SecondaryState::NotInString, '"')      => s2 = SecondaryState::InString,
-            (SecondaryState::InString, '\\') => s2 = SecondaryState::InStringAfterEscape,
-            (SecondaryState::InStringAfterEscape, _) => s2 = SecondaryState::InString,
-            (SecondaryState::InString, '"' ) => s2 = SecondaryState::NotInString,
-            (_, _) => ()
-        };
-
-        if let SecondaryState::NotInString = s2 {
-            match (&s1, ch) {
-                (PrimaryState::InCode, '#') => s1 = PrimaryState::InSingleLineComment,
-                (PrimaryState::InCode, '/') => s1 = PrimaryState::AfterForwardSlash,
-                (PrimaryState::AfterForwardSlash, '/') => s1 = PrimaryState::InSingleLineComment,
-                (PrimaryState::AfterForwardSlash, '*') => s1 = PrimaryState::InMultiLineComment,
-                (PrimaryState::AfterForwardSlash, _) => {
-                    s1 = PrimaryState::InCode;
-                    output.push('/');
-                }
-                (PrimaryState::InSingleLineComment, '\n') => s1 = PrimaryState::InCode,
-                (PrimaryState::InMultiLineComment, '*') => s1 = PrimaryState::InMultiLineAfterAsterisk,
-                (PrimaryState::InMultiLineAfterAsterisk, '/') => {
-                    s1 = PrimaryState::InCode;
-                    continue;
-                },
-                (PrimaryState::InMultiLineAfterAsterisk, _) => s1 = PrimaryState::InMultiLineComment,
-                (_,_) => (),
-            }
-        }
-        output.push(match s1 {
-            PrimaryState::InCode => ch,
-            _ => if ch == '\n' { '\n' } else { ' ' },
-        });
-    }
-
-    return output;
-}
-
-fn static_check(ast: &mut ast::Program, errors: &mut Vec<Diagnostic>) {
-    // TODO :)
-}
-
-fn compile(ctx: &Context) -> Result<(), Vec<Diagnostic>> {
-    let stripped = remove_comments(ctx.file_db.borrow().source(ctx.file_id));
-    let ast = match latte::GProgramParser::new().parse(&stripped) {
-        Err(err) => return Err(vec![parse_error_to_diagnostic(err, ctx.file_id)]),
+    let mut ast = match latte::GProgramParser::new().parse(&stripped) {
+        Err(e) => return Err(vec![diag::gen_from_parse_error(e)]),
         Ok(v) => v
     };
-    Ok(())
-}
 
-fn die(msg: &str) -> ! {
-    println!("ERROR\n");
-    println!("{}", msg);
-    std::process::exit(1);
+    let diags = frontend::do_semantic_check(&mut ast);
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+
+    return Ok(())
 }
 
 fn main() {
+    fn die(msg: &str) -> ! {
+        eprintln!("ERROR\n");
+        eprintln!("{}", msg);
+        std::process::exit(1);
+    }
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 { die(&format!("expected 1 argument, got {}", args.len()-1)) }
 
-    let ctx = match Context::new(&args[1]) {
-        Err(err) => die(&format!("error while reading file: {}", err)),
-        Ok(v) => v,
-    };
+    let path = args.get(1)
+        .unwrap_or_else(|| die(&format!("expected 1 argument, got {}", args.len()-1)));
 
-    match compile(&ctx) {
+    let file = File::new(path)
+        .unwrap_or_else(|e| die(&format!("error while reading file: {}", e)));
+
+    match compile(&file) {
         Err(diags) => {
-            println!("ERROR\n");
-            for diag in diags.iter() {
-                ctx.print(diag);
-            }
+            eprintln!("ERROR\n");
+            diag::print_all(&diags, &file);
             std::process::exit(1);
         },
         Ok(_) => {
-            println!("OK");
+            eprintln!("OK");
             std::process::exit(0);
         }
     }
@@ -173,19 +74,15 @@ fn main() {
 fn test_case(path: &str, expect_success: bool) -> bool {
     eprint!("{} => ", path);
     let success: bool;
-    let ctx = Context::new(&path).unwrap();
-    let result = compile(&ctx);
-    match compile(&ctx) {
+    let file = File::new(path).unwrap();
+    let result = compile(&file);
+    match result {
         Err(_) => success = !expect_success,
         Ok(_) => success = expect_success,
     }
-
     eprintln!("{}", if success { "OK" } else { "ERR" });
-
-    if let Err(vec) = result {
-        for diag in vec.iter() {
-            ctx.print(diag);
-        }
+    if let Err(diags) = result {
+        diag::print_all(&diags, &file);
     }
     return success;
 }
@@ -210,3 +107,32 @@ fn bad() {
     }
     assert!(success);
 }
+
+
+
+//struct Diagnostic {
+//    message: &'static str,
+//    highlight: Option<(u32, u32, &'static str)>,
+//}
+//
+//enum TranslationUnitError {
+//    InvalidArgs,
+//    InvalidFile(io::Error),
+//    InvalidSource(Vec<Diagnostic>),
+//}
+//
+//fn pretty_print_error(err: TranslationUnitError) {
+//    match err {
+//        TranslationUnitError::InvalidArgs => eprintln!("invalid number of arguments"),
+//        TranslationUnitError::InvalidFile(e) => eprintln!("invalid file: {}", e),
+//        TranslationUnitError::InvalidSource(errs) => {
+//            let stream =  termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+//
+//        }
+//    }
+//}
+
+
+//fn do_semantic_analysis(ctx: &Context, ast: &mut ast::Program) -> Vec<Diagnostic> {
+
+//}

@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Error};
 
 type Ident = String;
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Type {
     Int,
     Bool,
@@ -53,6 +53,8 @@ pub struct Block(pub Vec<Box<Stmt>>);
 #[derive(Debug)]
 pub struct Program(pub Vec<TopDef>);
 
+#[derive(Debug)]
+pub struct TopDef(pub Type, pub String, pub Vec<VarDecl>, pub Block);
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -68,13 +70,7 @@ pub enum Stmt {
     EStmt(Box<Expr>),
 }
 
-// Helper struct
-pub struct DeclBody(pub Ident, pub Option<Box<Expr>>);
 
-#[derive(Debug)]
-pub enum TopDef {
-    FnDef(Type, String, Vec<VarDecl>, Block)
-}
 
 impl Display for UnaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -129,4 +125,5 @@ impl Display for Expr {
     }
 }
 
-//impl Display for Expr
+// Helper struct for parsing, not a part of the ast.
+pub struct DeclBody(pub Ident, pub Option<Box<Expr>>);
