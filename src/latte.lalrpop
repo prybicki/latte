@@ -5,40 +5,11 @@ use crate::ast::*;
 
 grammar;
 
-// *** EXPRESSIONS ***
+// *** EXPESSIONS ***
 
 GIdent: String = {
     <s:r"[A-Za-z_'][A-Za-z0-9_']*"> => String::from(s),
 }
-
-GInteger: Box<Expr> = {
-    <s: r"[+-]"?> <v:r"[0-9]+"> => {
-        // panic possible here
-        let abs = i32::from_str(v).unwrap();
-        let val = match s {
-            Some("-") => -abs,
-            _ => abs
-        };
-        Box::new(Expr::Int(val))
-    },
-}
-
-GBoolean: Box<Expr> = {
-    "true" => Box::new(Expr::Bool(true)),
-    "false" => Box::new(Expr::Bool(false))
-}
-
-GString: Box<Expr> = {
-    <s:r#""([^,",\\]|\\")*""#> => {
-        let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
-        Box::new(Expr::Str(escaped))
-    },
-}
-
-Tier<Op,NextTier>: Box<Expr> = {
-    Tier<Op,NextTier> Op NextTier => Box::new(Expr::Op(<>)),
-    NextTier,
-};
 
 GOperandOr: BinaryOp = {
     "||" => BinaryOp::Or,
@@ -68,15 +39,39 @@ GOperandMul: BinaryOp = {
     "%" => BinaryOp::Mod,
 }
 
-// Left Associative Expression Macro
-LAExprMacro<Op, NextTier>: Box<Expr> = {
-    LAExprMacro<Op,NextTier> Op NextTier => Box::new(Expr::Binary(<>)),
+GInteger: Box<Exp> = {
+    <s: r"[+-]"?> <v:r"[0-9]+"> => {
+        // panic possible here
+        let abs = i32::from_str(v).unwrap();
+        let val = match s {
+            Some("-") => -abs,
+            _ => abs
+        };
+        Exp::new(ExpRaw::Int(val))
+    },
+}
+
+GBoolean: Box<Exp> = {
+    "true" =>  Exp::new(ExpRaw::Bool(true)),
+    "false" => Exp::new(ExpRaw::Bool(false)),
+}
+
+GString: Box<Exp> = {
+    <s:r#""([^,",\\]|\\")*""#> => {
+        let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
+        Exp::new(ExpRaw::Str(escaped))
+    },
+}
+
+// Left Associative Expession Macro
+LAExpMacro<Op, NextTier>: Box<Exp> = {
+    LAExpMacro<Op,NextTier> Op NextTier => Exp::new(ExpRaw::Binary(<>)),
     NextTier,
 };
 
-// Right Associative Expression Macro
-RAExprMacro<Op, NextTier>: Box<Expr> = {
-    NextTier Op RAExprMacro<Op,NextTier> => Box::new(Expr::Binary(<>)),
+// Right Associative Expession Macro
+RAExpMacro<Op, NextTier>: Box<Exp> = {
+    NextTier Op RAExpMacro<Op,NextTier> => Exp::new(ExpRaw::Binary(<>)),
     NextTier,
 };
 
@@ -91,32 +86,32 @@ GList<T, Sep>: Vec<T> = { // (1)
     }
 };
 
-GExpr = GExprOr;
-GExprOr  = RAExprMacro<GOperandOr, GExprAnd>;
-GExprAnd = RAExprMacro<GOperandAnd, GExprRel>;
-GExprRel = LAExprMacro<GOperandRel, GExprAdd>;
-GExprAdd = LAExprMacro<GOperandAdd, GExprMul>;
-GExprMul = LAExprMacro<GOperandMul, GExprUnary>;
+GExp = GExpOr;
+GExpOr  = RAExpMacro<GOperandOr,  GExpAnd>;
+GExpAnd = RAExpMacro<GOperandAnd, GExpRel>;
+GExpRel = LAExpMacro<GOperandRel, GExpAdd>;
+GExpAdd = LAExpMacro<GOperandAdd, GExpMul>;
+GExpMul = LAExpMacro<GOperandMul, GExpUnary>;
 
-GExprUnary: Box<Expr> = {
-    "!" <e:GExprAtom> => Box::new(Expr::Unary(UnaryOp::Not, e)),
-    "-" <e:GExprAtom> => Box::new(Expr::Unary(UnaryOp::Neg, e)),
-    GExprAtom => <>,
+GExpUnary: Box<Exp> = {
+    "!" <e:GExpAtom> => Exp::new(ExpRaw::Unary(UnaryOp::Not, e)),
+    "-" <e:GExpAtom> => Exp::new(ExpRaw::Unary(UnaryOp::Neg, e)),
+    GExpAtom => <>,
 }
 
-GExprAtom: Box<Expr> = {
+GExpAtom: Box<Exp> = {
     GInteger => <>,
     GBoolean => <>,
     GString => <>,
-    GIdent => Box::new(Expr::Var(<>)),
-    <GIdent> "(" <GList<GExpr, ",">> ")" => Box::new(Expr::Call(<>)),
-    "(" <GExprOr> ")" => <>,
+    GIdent => Exp::new(ExpRaw::Var(<>)),
+    <GIdent> "(" <GList<GExp, ",">> ")" => Exp::new(ExpRaw::Call(<>)),
+    "(" <GExpOr> ")" => <>,
 }
 
 // *** TOP LEVEL ***
 
 pub GProgram: Program = {
-    <GTopDef+> => Program(<>)
+    <GFnDef+> => Program(<>)
 };
 
 GType: Type = {
@@ -130,20 +125,20 @@ GArg: VarDecl = {
     <GType> <GIdent> => VarDecl(<>, Option::None),
 };
 
-GTopDef: TopDef = {
-    <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => TopDef(<>),
+GFnDef: FnDef = {
+    <GType> <GIdent> "(" <GList<GArg, ",">> ")" <GBlock> => FnDef(<>),
 };
 
 GDeclBody: DeclBody = {
-    <GIdent> <("=" <GExpr>)?> => DeclBody(<>),
+    <GIdent> <("=" <GExp>)?> => DeclBody(<>),
 }
 
 GDecl: Vec<VarDecl> = {
     <typename:GType> <v:GList<GDeclBody, ",">> => {
         let mut out = vec![];
         for body in v.into_iter() {
-            let DeclBody(ident, maybe_expr) = body;
-            out.push(VarDecl(typename, ident, maybe_expr))
+            let DeclBody(ident, maybe_exp) = body;
+            out.push(VarDecl(typename, ident, maybe_exp))
         }
         out
     },
@@ -161,27 +156,27 @@ GStmt: Box<Stmt> = {
 }
 
 GOpenStmt: Box<Stmt> = {
-    "if" "(" <c:GExpr> ")" <t:GSimpleStmt>                      => Box::new(Stmt::Cond(c, t, Option::None)),
-    "if" "(" <c:GExpr> ")" <t:GOpenStmt>                        => Box::new(Stmt::Cond(c, t, Option::None)),
-    "if" "(" <c:GExpr> ")" <t:GClosedStmt> "else" <f:GOpenStmt> => Box::new(Stmt::Cond(c, t, Option::Some(f))),
-    "while" "(" <c:GExpr> ")" <body:GOpenStmt>                  => Box::new(Stmt::While(c, body)),
+    "if" "(" <c:GExp> ")" <tstmt:GSimpleStmt>                          => Box::new(Stmt::Cond(c, Block(vec![tstmt]), Option::None)),
+    "if" "(" <c:GExp> ")" <tstmt:GOpenStmt>                            => Box::new(Stmt::Cond(c, Block(vec![tstmt]), Option::None)),
+    "if" "(" <c:GExp> ")" <tstmt:GClosedStmt> "else" <fstmt:GOpenStmt> => Box::new(Stmt::Cond(c, Block(vec![tstmt]), Option::Some(Block(vec![fstmt])))),
+    "while" "(" <c:GExp> ")" <body:GOpenStmt>                          => Box::new(Stmt::While(c, Block(vec![body]))),
 }
 
 GClosedStmt: Box<Stmt> = {
-    <GSimpleStmt>                                                 => <>,
-    "if" "(" <c:GExpr> ")" <t:GClosedStmt> "else" <f:GClosedStmt> => Box::new(Stmt::Cond(c, t, Option::Some(f))),
-    "while" "(" <c:GExpr> ")" <body:GClosedStmt>                  => Box::new(Stmt::While(c, body)),
+    <GSimpleStmt>                                                        => <>,
+    "if" "(" <c:GExp> ")" <tstmt:GClosedStmt> "else" <fstmt:GClosedStmt> => Box::new(Stmt::Cond(c, Block(vec![tstmt]), Option::Some(Block(vec![fstmt])))),
+    "while" "(" <c:GExp> ")" <body:GClosedStmt>                          => Box::new(Stmt::While(c, Block(vec![body]))),
 }
 
 GSimpleStmt: Box<Stmt> = {
     ";"                      => Box::new(Stmt::BStmt(Block(vec![]))),
-    <GExpr> ";"              => Box::new(Stmt::EStmt(<>)),
+    <GExp> ";"               => Box::new(Stmt::EStmt(<>)),
     <GBlock>                 => Box::new(Stmt::BStmt(<>)),
     <GDecl> ";"              => Box::new(Stmt::Decl(<>)),
-    <GIdent> "=" <GExpr> ";" => Box::new(Stmt::Ass(<>)),
+    <GIdent> "=" <GExp> ";"  => Box::new(Stmt::Ass(<>)),
     <GIdent> "++" ";"        => Box::new(Stmt::Incr(<>)),
     <GIdent> "--" ";"        => Box::new(Stmt::Decr(<>)),
-    "return" <GExpr> ";"     => Box::new(Stmt::Ret(<>)),
+    "return" <GExp> ";"      => Box::new(Stmt::Ret(<>)),
     "return" ";"             => Box::new(Stmt::VRet),
 }
 

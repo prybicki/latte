@@ -8,13 +8,18 @@ use codespan_reporting::term::Config;
 use codespan_reporting::diagnostic::Diagnostic as Diag;
 
 pub struct Diagnostic {
-    message: &'static str,
+    message: String,
     details: Option<(u32, u32, String)>
 }
 
-pub fn gen_invalid_main() -> Diagnostic {
-    Diagnostic {message: "no valid main function", details: None}
+pub fn gen_no_main() -> Diagnostic {
+    Diagnostic {message: "missing main function".to_owned(), details: None}
 }
+
+pub fn gen_invalid_main() -> Diagnostic {
+    Diagnostic {message: "wrong main function signature".to_owned(), details: None}
+}
+
 
 pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
     let ((b, e), comment) = match err {
@@ -34,7 +39,15 @@ pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
         _ => panic!("undefined parser error")
     };
 
-    Diagnostic {message: "syntax error", details: Some((b as u32, e as u32 , comment))}
+    Diagnostic {message: "syntax error".to_owned(), details: Some((b as u32, e as u32 , comment))}
+}
+
+pub fn gen_multiple_fn_def(name: &str) -> Diagnostic {
+    Diagnostic {message: format!("multiple declaration of function: {}", name), details: None}
+}
+
+pub fn gen_multiple_arg_def(name: &str) -> Diagnostic {
+    Diagnostic {message: format!("multiple declaration of argument: {}", name), details: None}
 }
 
 pub fn print_all(diagnostics: &[Diagnostic], file: &File) {
@@ -47,14 +60,14 @@ pub fn print_all(diagnostics: &[Diagnostic], file: &File) {
             if let Some((b, e, ref comment)) = diagnostic.details {
                 let span = Span::new(b, e);
                 let label = Label::new(file.file_id, span, comment);
-                let diag = codespan_reporting::diagnostic::Diagnostic::new_error(diagnostic.message, label);
+                let diag = codespan_reporting::diagnostic::Diagnostic::new_error(diagnostic.message.clone(), label);
                 let config = &long_cfg;
                 (diag, config)
             }
             else {
                 let span = Span::new(0, 0);
                 let label = Label::new(file.file_id, span, "");
-                let diag = Diag::new_error(diagnostic.message, label);
+                let diag = Diag::new_error(diagnostic.message.clone(), label);
                 let config = &short_cfg;
                 (diag, config)
             };

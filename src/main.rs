@@ -35,7 +35,7 @@ fn compile(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
         Ok(v) => v
     };
 
-    let diags = frontend::do_semantic_check(&mut ast);
+    let diags = frontend::verify_program(&mut ast);
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -108,31 +108,4 @@ fn bad() {
     assert!(success);
 }
 
-
-
-//struct Diagnostic {
-//    message: &'static str,
-//    highlight: Option<(u32, u32, &'static str)>,
-//}
-//
-//enum TranslationUnitError {
-//    InvalidArgs,
-//    InvalidFile(io::Error),
-//    InvalidSource(Vec<Diagnostic>),
-//}
-//
-//fn pretty_print_error(err: TranslationUnitError) {
-//    match err {
-//        TranslationUnitError::InvalidArgs => eprintln!("invalid number of arguments"),
-//        TranslationUnitError::InvalidFile(e) => eprintln!("invalid file: {}", e),
-//        TranslationUnitError::InvalidSource(errs) => {
-//            let stream =  termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
-//
-//        }
-//    }
-//}
-
-
-//fn do_semantic_analysis(ctx: &Context, ast: &mut ast::Program) -> Vec<Diagnostic> {
-
-//}
+// TODO open
