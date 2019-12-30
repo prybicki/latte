@@ -1,6 +1,7 @@
 use crate::File;
 use crate::latte;
 use crate::ParseError;
+use crate::ast;
 use codespan::Span;
 use codespan_reporting::term::{emit, DisplayStyle};
 use codespan_reporting::diagnostic::Label;
@@ -8,8 +9,8 @@ use codespan_reporting::term::Config;
 use codespan_reporting::diagnostic::Diagnostic as Diag;
 
 pub struct Diagnostic {
-    message: String,
-    details: Option<(u32, u32, String)>
+    pub message: String,
+    pub details: Option<(u32, u32, String)>
 }
 
 pub fn gen_no_main() -> Diagnostic {
@@ -17,9 +18,35 @@ pub fn gen_no_main() -> Diagnostic {
 }
 
 pub fn gen_invalid_main() -> Diagnostic {
-    Diagnostic {message: "wrong main function signature".to_owned(), details: None}
+    Diagnostic {message: "invalid main function".to_owned(), details: None}
 }
 
+pub fn gen_invalid_unary(exp: &ast::Exp) -> Diagnostic {
+    Diagnostic {message: format!("invalid unary exp: {}", exp), details: None }
+}
+
+pub fn gen_invalid_binary(exp: &ast::Exp) -> Diagnostic {
+    Diagnostic {message: format!("invalid binary exp: {}", exp), details: None }
+}
+
+pub fn gen_unknown_function(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
+    Diagnostic {message: format!("unknown function: {} (in expr: {})", ident, exp), details: None}
+}
+
+pub fn gen_invalid_arguments(exp: &ast::Exp) -> Diagnostic {
+    Diagnostic {message: format!("invalid arguments in call: {}", exp), details: None}
+}
+
+pub fn gen_invalid_assignment(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
+    Diagnostic {message: format!("cannot assign {} to {}", exp, ident), details: None}
+}
+
+pub fn gen_unknown_variable(ident: &ast::Ident) -> Diagnostic {
+    Diagnostic {
+        message: format!("unknown variable: {}", ident),
+        details: None,
+    }
+}
 
 pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
     let ((b, e), comment) = match err {

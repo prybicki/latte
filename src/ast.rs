@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Error};
 
-type Ident = String;
+pub type Ident = String;
 
 #[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Type {
@@ -8,8 +8,26 @@ pub enum Type {
     Bool,
     Str,
     Void,
-    Unknown, // TODO use Option
+    Unknown,
     Invalid,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::Bool => write!(f, "boolean"),
+            Type::Str => write!(f, "string"),
+            Type::Void => write!(f, "void"),
+            _ => write!(f, "<invalid/unknown>")
+        }
+    }
+}
+
+impl Type {
+    pub fn is_valid(&self) -> bool {
+        *self != Type::Invalid && *self != Type::Unknown
+    }
 }
 
 #[derive(Debug,Clone,Copy,PartialEq)]
@@ -36,30 +54,30 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug)]
-pub enum ExpRaw {
-    Unary(UnaryOp, Box<Exp>),
-    Binary(Box<Exp>, BinaryOp, Box<Exp>),
-    Call(Ident, Vec<Box<Exp>>),
+pub enum Exp {
+    Unary(UnaryOp, Box<TypedExp>),
+    Binary(Box<TypedExp>, BinaryOp, Box<TypedExp>),
+    Call(Ident, Vec<Box<TypedExp>>),
     Int(i32),
     Bool(bool),
     Str(String),
-    Var(String),
+    Var(Ident),
 }
 
 #[derive(Debug)]
-pub struct Exp {
-    raw: ExpRaw,
-    typ: Type,
+pub struct TypedExp {
+    pub exp: Exp,
+    pub etype: Type
 }
 
 impl Exp {
-    pub fn new(raw: ExpRaw) -> Box<Exp> {
-        Box::new(Exp {raw, typ: Type::Unknown})
+    pub fn new(exp: Exp) -> Box<TypedExp> {
+        Box::new(TypedExp{ exp: exp, etype: Type::Unknown})
     }
 }
 
 #[derive(Debug)]
-pub struct VarDecl(pub Type, pub Ident, pub Option<Box<Exp>>);
+pub struct VarDecl(pub Type, pub Ident, pub Option<Box<TypedExp>>);
 
 #[derive(Debug)]
 pub struct Block(pub Vec<Box<Stmt>>);
@@ -68,20 +86,28 @@ pub struct Block(pub Vec<Box<Stmt>>);
 pub struct Program(pub Vec<FnDef>);
 
 #[derive(Debug)]
-pub struct FnDef(pub Type, pub String, pub Vec<VarDecl>, pub Block);
+pub struct FnDef(pub Type, pub Ident, pub Vec<VarDecl>, pub Block);
+
+impl FnDef {
+    pub fn get_signature(&self) -> (Type, Vec<Type>) {
+        let FnDef(ttype, _, params, _) = self;
+        (*ttype, params.iter().map(|VarDecl(t, _, _)| *t).collect())
+    }
+
+}
 
 #[derive(Debug)]
 pub enum Stmt {
     BStmt(Block),
     Decl(Vec<VarDecl>),
-    Ass(Ident, Box<Exp>),
+    Ass(Ident, Box<TypedExp>),
     Incr(Ident),
     Decr(Ident),
-    Ret(Box<Exp>),
+    Ret(Box<TypedExp>),
     VRet,
-    Cond(Box<Exp>, Block, Option<Block>),
-    While(Box<Exp>, Block),
-    EStmt(Box<Exp>),
+    Cond(Box<TypedExp>, Block, Option<Block>),
+    While(Box<TypedExp>, Block),
+    EStmt(Box<TypedExp>),
 }
 
 impl Display for UnaryOp {
@@ -115,12 +141,12 @@ impl Display for BinaryOp {
     }
 }
 
-impl Display for ExpRaw {
+impl Display for Exp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
-            ExpRaw::Unary(op, e) => write!(f, "{}{}", op, e),
-            ExpRaw::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
-            ExpRaw::Call(ident, args) => {
+            Exp::Unary(op, e) => write!(f, "{}{}", op, e),
+            Exp::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
+            Exp::Call(ident, args) => {
                 let mut args_text = String::new();
                 for arg in args.iter() {
                     args_text.push_str(&(**arg).to_string());
@@ -129,20 +155,19 @@ impl Display for ExpRaw {
                 let args_text = &args_text[0..args_text.len()-2];
                 write!(f, "{}({})", ident, args_text)
             }
-            ExpRaw::Int(v) => write!(f, "{}", v),
-            ExpRaw::Bool(v) => write!(f, "b{}", v),
-            ExpRaw::Str(v) => write!(f, "{}", v),
-            ExpRaw::Var(v) => write!(f, "{}", v),
+            Exp::Int(v) => write!(f, "{}", v),
+            Exp::Bool(v) => write!(f, "b{}", v),
+            Exp::Str(v) => write!(f, "{}", v),
+            Exp::Var(v) => write!(f, "{}", v),
         }
     }
 }
 
-impl Display for Exp {
+impl Display for TypedExp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let Exp{raw: raw, ..} = self;
-        return raw.fmt(f);
+        return self.exp.fmt(f);
     }
 }
 
 // Helper struct for parsing, not a part of the ast.
-pub struct DeclBody(pub Ident, pub Option<Box<Exp>>);
+pub struct DeclBody(pub Ident, pub Option<Box<TypedExp>>);

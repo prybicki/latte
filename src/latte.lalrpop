@@ -39,7 +39,7 @@ GOperandMul: BinaryOp = {
     "%" => BinaryOp::Mod,
 }
 
-GInteger: Box<Exp> = {
+GInteger: Box<TypedExp> = {
     <s: r"[+-]"?> <v:r"[0-9]+"> => {
         // panic possible here
         let abs = i32::from_str(v).unwrap();
@@ -47,31 +47,31 @@ GInteger: Box<Exp> = {
             Some("-") => -abs,
             _ => abs
         };
-        Exp::new(ExpRaw::Int(val))
+        Exp::new(Exp::Int(val))
     },
 }
 
-GBoolean: Box<Exp> = {
-    "true" =>  Exp::new(ExpRaw::Bool(true)),
-    "false" => Exp::new(ExpRaw::Bool(false)),
+GBoolean: Box<TypedExp> = {
+    "true" =>  Exp::new(Exp::Bool(true)),
+    "false" => Exp::new(Exp::Bool(false)),
 }
 
-GString: Box<Exp> = {
+GString: Box<TypedExp> = {
     <s:r#""([^,",\\]|\\")*""#> => {
         let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
-        Exp::new(ExpRaw::Str(escaped))
+        Exp::new(Exp::Str(escaped))
     },
 }
 
-// Left Associative Expession Macro
-LAExpMacro<Op, NextTier>: Box<Exp> = {
-    LAExpMacro<Op,NextTier> Op NextTier => Exp::new(ExpRaw::Binary(<>)),
+// Left Associative Expression Macro
+LAExpMacro<Op, NextTier>: Box<TypedExp> = {
+    LAExpMacro<Op,NextTier> Op NextTier => Exp::new(Exp::Binary(<>)),
     NextTier,
 };
 
-// Right Associative Expession Macro
-RAExpMacro<Op, NextTier>: Box<Exp> = {
-    NextTier Op RAExpMacro<Op,NextTier> => Exp::new(ExpRaw::Binary(<>)),
+// Right Associative Expression Macro
+RAExpMacro<Op, NextTier>: Box<TypedExp> = {
+    NextTier Op RAExpMacro<Op,NextTier> => Exp::new(Exp::Binary(<>)),
     NextTier,
 };
 
@@ -93,18 +93,18 @@ GExpRel = LAExpMacro<GOperandRel, GExpAdd>;
 GExpAdd = LAExpMacro<GOperandAdd, GExpMul>;
 GExpMul = LAExpMacro<GOperandMul, GExpUnary>;
 
-GExpUnary: Box<Exp> = {
-    "!" <e:GExpAtom> => Exp::new(ExpRaw::Unary(UnaryOp::Not, e)),
-    "-" <e:GExpAtom> => Exp::new(ExpRaw::Unary(UnaryOp::Neg, e)),
+GExpUnary: Box<TypedExp> = {
+    "!" <e:GExpAtom> => Exp::new(Exp::Unary(UnaryOp::Not, e)),
+    "-" <e:GExpAtom> => Exp::new(Exp::Unary(UnaryOp::Neg, e)),
     GExpAtom => <>,
 }
 
-GExpAtom: Box<Exp> = {
+GExpAtom: Box<TypedExp> = {
     GInteger => <>,
     GBoolean => <>,
     GString => <>,
-    GIdent => Exp::new(ExpRaw::Var(<>)),
-    <GIdent> "(" <GList<GExp, ",">> ")" => Exp::new(ExpRaw::Call(<>)),
+    GIdent => Exp::new(Exp::Var(<>)),
+    <GIdent> "(" <GList<GExp, ",">> ")" => Exp::new(Exp::Call(<>)),
     "(" <GExpOr> ")" => <>,
 }
 
