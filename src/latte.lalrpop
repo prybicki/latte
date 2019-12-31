@@ -117,8 +117,8 @@ GType: TypeSpecifier = {
     <l:@L> "void" <r:@R>    => TypeSpecifier::new(l, r, Type::Void),
 }
 
-GParam: VarDecls = {
-    <l:@L> <t:GType> <b:GDeclBodyNoInit> <r:@R> => VarDecls {span: Span(l, r), type_spec: t, vars: vec![b]},
+GParam: VarDecl = {
+    <l:@L> <t:GType> <b:GDeclBodyNoInit> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: vec![b]},
 };
 
 GFnDef: FnDef = {
@@ -135,8 +135,8 @@ GDeclBody: DeclBody = {
     <l:@L> <n:GIdent> <e:("=" <GExp>)?> <r:@R> => DeclBody {span: Span(l, r), ident: n, init: e},
 }
 
-GDecls: VarDecls = {
-    <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecls {span: Span(l, r), type_spec: t, vars: bs},
+GDecls: VarDecl = {
+    <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: bs},
 };
 
 GBlock: Block = {

@@ -20,12 +20,32 @@ pub fn gen_invalid_main() -> Diagnostic {
     Diagnostic {message: "invalid main function".to_owned(), details: None}
 }
 
-pub fn gen_multiple_fn_def(name: &str) -> Diagnostic {
-    Diagnostic {message: format!("multiple declaration of function: {}", name), details: None}
+pub fn gen_multiple_fn_def(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
+    Diagnostic {
+        message: format!("multiple declaration of function {}", ident),
+        details: Some((span, "defined second time here".to_owned()))
+    }
 }
 
-pub fn gen_multiple_arg_def(name: &str) -> Diagnostic {
-    Diagnostic {message: format!("multiple declaration of argument: {}", name), details: None}
+pub fn gen_multiple_arg_def(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
+    Diagnostic {
+        message: format!("multiple declaration of parameter {}", ident),
+        details: Some((span, "defined second time here".to_owned()))
+    }
+}
+
+pub fn gen_undeclared_variable_in_stmt(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
+    Diagnostic {
+        message: format!("undeclared variable {}", ident),
+        details: Some((span, format!("in this statement")))
+    }
+}
+
+pub fn gen_invalid_expression_type(expected: ast::Type, actual: ast::Type, span: ast::Span) -> Diagnostic {
+    Diagnostic{
+        message: format!("invalid expression type"),
+        details: Some((span, format!("expected {}, got {}", expected, actual)))
+    }
 }
 
 //pub fn gen_invalid_unary(exp: &ast::Exp) -> Diagnostic {

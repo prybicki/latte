@@ -9,7 +9,7 @@ pub struct FnDef {
     pub span: Span,
     pub type_spec: TypeSpecifier,
     pub ident: Ident,
-    pub params: Vec<VarDecls>,
+    pub params: Vec<VarDecl>,
     pub block: Block,
 }
 
@@ -18,7 +18,7 @@ pub struct TypeSpecifier {
     pub ttype: Type,
 }
 
-pub struct VarDecls {
+pub struct VarDecl {
     pub span: Span,
     pub type_spec: TypeSpecifier,
     pub vars: Vec<DeclBody>
@@ -60,7 +60,7 @@ pub struct StmtNode {
 
 pub enum Stmt {
     BStmt(Block),
-    Decl(VarDecls),
+    Decl(VarDecl),
     Ass(Ident, Box<ExpNode>),
     Incr(Ident),
     Decr(Ident),
@@ -145,7 +145,7 @@ pub fn is_valid(ttype: &Option<Type>) -> bool {
 
 impl FnDef {
     pub fn get_signature(&self) -> FnSignature {
-        (self.type_spec.ttype, self.params.iter().map(|VarDecls {type_spec: ts, ..}| ts.ttype).collect())
+        (self.type_spec.ttype, self.params.iter().map(|VarDecl {type_spec: ts, ..}| ts.ttype).collect())
     }
 }
 
