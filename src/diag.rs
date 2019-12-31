@@ -2,7 +2,6 @@ use crate::File;
 use crate::latte;
 use crate::ParseError;
 use crate::ast;
-use codespan::Span;
 use codespan_reporting::term::{emit, DisplayStyle};
 use codespan_reporting::diagnostic::Label;
 use codespan_reporting::term::Config;
@@ -10,7 +9,7 @@ use codespan_reporting::diagnostic::Diagnostic as Diag;
 
 pub struct Diagnostic {
     pub message: String,
-    pub details: Option<(u32, u32, String)>
+    pub details: Option<(ast::Span, String)>
 }
 
 pub fn gen_no_main() -> Diagnostic {
@@ -21,32 +20,40 @@ pub fn gen_invalid_main() -> Diagnostic {
     Diagnostic {message: "invalid main function".to_owned(), details: None}
 }
 
-pub fn gen_invalid_unary(exp: &ast::Exp) -> Diagnostic {
-    Diagnostic {message: format!("invalid unary exp: {}", exp), details: None }
+pub fn gen_multiple_fn_def(name: &str) -> Diagnostic {
+    Diagnostic {message: format!("multiple declaration of function: {}", name), details: None}
 }
 
-pub fn gen_invalid_binary(exp: &ast::Exp) -> Diagnostic {
-    Diagnostic {message: format!("invalid binary exp: {}", exp), details: None }
+pub fn gen_multiple_arg_def(name: &str) -> Diagnostic {
+    Diagnostic {message: format!("multiple declaration of argument: {}", name), details: None}
 }
 
-pub fn gen_unknown_function(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
-    Diagnostic {message: format!("unknown function: {} (in expr: {})", ident, exp), details: None}
-}
-
-pub fn gen_invalid_arguments(exp: &ast::Exp) -> Diagnostic {
-    Diagnostic {message: format!("invalid arguments in call: {}", exp), details: None}
-}
-
-pub fn gen_invalid_assignment(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
-    Diagnostic {message: format!("cannot assign {} to {}", exp, ident), details: None}
-}
-
-pub fn gen_unknown_variable(ident: &ast::Ident) -> Diagnostic {
-    Diagnostic {
-        message: format!("unknown variable: {}", ident),
-        details: None,
-    }
-}
+//pub fn gen_invalid_unary(exp: &ast::Exp) -> Diagnostic {
+//    Diagnostic {message: format!("invalid unary exp: {}", exp), details: None }
+//}
+//
+//pub fn gen_invalid_binary(exp: &ast::Exp) -> Diagnostic {
+//    Diagnostic {message: format!("invalid binary exp: {}", exp), details: None }
+//}
+//
+//pub fn gen_unknown_function(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
+//    Diagnostic {message: format!("unknown function: {} (in expr: {})", ident, exp), details: None}
+//}
+//
+//pub fn gen_invalid_arguments(exp: &ast::Exp) -> Diagnostic {
+//    Diagnostic {message: format!("invalid arguments in call: {}", exp), details: None}
+//}
+//
+//pub fn gen_invalid_assignment(ident: &ast::Ident, exp: &ast::Exp) -> Diagnostic {
+//    Diagnostic {message: format!("cannot assign {} to {}", exp, ident), details: None}
+//}
+//
+//pub fn gen_unknown_variable(ident: &ast::Ident) -> Diagnostic {
+//    Diagnostic {
+//        message: format!("unknown variable: {}", ident),
+//        details: None,
+//    }
+//}
 
 pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
     let ((b, e), comment) = match err {
@@ -66,15 +73,7 @@ pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
         _ => panic!("undefined parser error")
     };
 
-    Diagnostic {message: "syntax error".to_owned(), details: Some((b as u32, e as u32 , comment))}
-}
-
-pub fn gen_multiple_fn_def(name: &str) -> Diagnostic {
-    Diagnostic {message: format!("multiple declaration of function: {}", name), details: None}
-}
-
-pub fn gen_multiple_arg_def(name: &str) -> Diagnostic {
-    Diagnostic {message: format!("multiple declaration of argument: {}", name), details: None}
+    Diagnostic {message: "syntax error".to_owned(), details: Some((ast::Span(b, e) , comment))}
 }
 
 pub fn print_all(diagnostics: &[Diagnostic], file: &File) {
@@ -84,15 +83,15 @@ pub fn print_all(diagnostics: &[Diagnostic], file: &File) {
 
     for diagnostic in diagnostics {
         let (diag, config) =
-            if let Some((b, e, ref comment)) = diagnostic.details {
-                let span = Span::new(b, e);
+            if let Some((span, comment)) = &diagnostic.details {
+                let span = codespan::Span::new(span.0 as u32, span.1 as u32);
                 let label = Label::new(file.file_id, span, comment);
                 let diag = codespan_reporting::diagnostic::Diagnostic::new_error(diagnostic.message.clone(), label);
                 let config = &long_cfg;
                 (diag, config)
             }
             else {
-                let span = Span::new(0, 0);
+                let span = codespan::Span::new(0, 0);
                 let label = Label::new(file.file_id, span, "");
                 let diag = Diag::new_error(diagnostic.message.clone(), label);
                 let config = &short_cfg;

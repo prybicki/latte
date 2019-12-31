@@ -60,14 +60,14 @@ GString: String = {
 }
 
 // Left Associative Expression Macro
-LAExpMacro<Op, NextTier>: Box<TypedExp> = {
-    <l:@L> <lexp:LAExpMacro<Op,NextTier>> <o:Op> <rexp:NextTier> <r:@R> => Exp::new_bin(l, r, op, lexp, rexp),
+LAExpMacro<Op, NextTier>: Box<ExpNode> = {
+    <l:@L> <lexp:LAExpMacro<Op,NextTier>> <o:Op> <rexp:NextTier> <r:@R> => ExpNode::new_bin(l, r, o, lexp, rexp),
     NextTier,
 };
 
 // Right Associative Expression Macro
-RAExpMacro<Op, NextTier>: Box<TypedExp> = {
-    <l:@L> <lexp:NextTier> <o:Op> <rexp:RAExpMacro<Op,NextTier>> <r:@R> => Exp::new_bin(l, r, op, lexp, rexp),
+RAExpMacro<Op, NextTier>: Box<ExpNode> = {
+    <l:@L> <lexp:NextTier> <o:Op> <rexp:RAExpMacro<Op,NextTier>> <r:@R> => ExpNode::new_bin(l, r, o, lexp, rexp),
     NextTier,
 };
 
@@ -89,18 +89,18 @@ GExpRel = LAExpMacro<GOperandRel, GExpAdd>;
 GExpAdd = LAExpMacro<GOperandAdd, GExpMul>;
 GExpMul = LAExpMacro<GOperandMul, GExpUnary>;
 
-GExpUnary: Box<TypedExp> = {
-    <l:@L> "!" <e:GExpAtom> <r:@R> => Exp::new_un(l, r, Not, e),
-    <l:@L> "-" <e:GExpAtom> <r:@R> => Exp::new_un(l, r, Neg, e),
+GExpUnary: Box<ExpNode> = {
+    <l:@L> "!" <e:GExpAtom> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Not, e),
+    <l:@L> "-" <e:GExpAtom> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Neg, e),
     <GExpAtom> => <>
 }
 
-GExpAtom: Box<TypedExp> = {
-    <l:@L> <e:GInteger> <r:@R> => Exp::new(l, r, ExpData::Int(e)),
-    <l:@L> <e:GBoolean> <r:@R> => Exp::new(l, r, ExpData::Bool(e)),
-    <l:@L> <e:GString>  <r:@R> => Exp::new(l, r, ExpData::Str(e)),
-    <l:@L> <n:GIdent>   <r:@R> => Exp::new(l, r, ExpData::Var(n)),
-    <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => Exp::new(l, r, ExpData::Call(n, a)),
+GExpAtom: Box<ExpNode> = {
+    <l:@L> <e:GInteger> <r:@R> => ExpNode::new(l, r, Exp::Int(e)),
+    <l:@L> <e:GBoolean> <r:@R> => ExpNode::new(l, r, Exp::Bool(e)),
+    <l:@L> <e:GString>  <r:@R> => ExpNode::new(l, r, Exp::Str(e)),
+    <l:@L> <n:GIdent>   <r:@R> => ExpNode::new(l, r, Exp::Var(n)),
+    <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => ExpNode::new(l, r, Exp::Call(n, a)),
     "(" <GExpOr> ")" => <>,
 }
 
@@ -111,13 +111,13 @@ pub GProgram: Program = {
 };
 
 GType: TypeSpecifier = {
-    <l:@L> "int" <r:@R> => TypeSpecifier::new(Int, l, r),
-    <l:@L> "boolean" <r:@R> => TypeSpecifier::new(Bool, l, r),
-    <l:@L> "string" <r:@R> => TypeSpecifier::new(Str, l, r),
-    <l:@L> "void" <r:@R> => TypeSpecifier::new(Void, l, r),
+    <l:@L> "int" <r:@R>     => TypeSpecifier::new(l, r, Type::Int),
+    <l:@L> "boolean" <r:@R> => TypeSpecifier::new(l, r, Type::Bool),
+    <l:@L> "string" <r:@R>  => TypeSpecifier::new(l, r, Type::Str),
+    <l:@L> "void" <r:@R>    => TypeSpecifier::new(l, r, Type::Void),
 }
 
-GParam: VarDecl = {
+GParam: VarDecls = {
     <l:@L> <t:GType> <b:GDeclBodyNoInit> <r:@R> => VarDecls {span: Span(l, r), type_spec: t, vars: vec![b]},
 };
 
@@ -136,7 +136,7 @@ GDeclBody: DeclBody = {
 }
 
 GDecls: VarDecls = {
-    <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: bs},
+    <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecls {span: Span(l, r), type_spec: t, vars: bs},
 };
 
 GBlock: Block = {
@@ -145,32 +145,32 @@ GBlock: Block = {
 
 // https://en.wikipedia.org/wiki/Dangling_else
 
-GStmt: Box<Stmt> = {
+GStmt: Box<StmtNode> = {
     <GOpenStmt>   => <>,
     <GClosedStmt> => <>,
 }
 
-GOpenStmt: Box<Stmt> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(t.span.0, t.span.1, vec![f])))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => Stmt::new(l, r, StmtData::While(c,  Block::new(t.span.0, t.span.1, vec![t]))),
+GOpenStmt: Box<StmtNode> = {
+    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => StmtNode::new(l, r, Stmt::While(c,  Block::new(t.span.0, t.span.1, vec![t]))),
 }
 
-GClosedStmt: Box<Stmt> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => Stmt::new(l, r, StmtData::Cond(c,  Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => Stmt::new(l, r, StmtData::While(c, Block::new(t.span.0, t.span.1, vec![t]))),
+GClosedStmt: Box<StmtNode> = {
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => StmtNode::new(l, r, Stmt::Cond(c,  Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => StmtNode::new(l, r, Stmt::While(c, Block::new(t.span.0, t.span.1, vec![t]))),
     <GSimpleStmt> => <>,
 }
 
-GSimpleStmt: Box<Stmt> = {
-    <l:@L> ";" <r:@R>                         => Stmt::new(l, r, StmtData::BStmt(Block(vec![]))),
-    <l:@L> <e:GExp> ";" <r:@R>                => Stmt::new(l, r, StmtData::EStmt(e)),
-    <l:@L> <b:GBlock> <r:@R>                  => Stmt::new(l, r, StmtData::BStmt(b)),
-    <l:@L> <d:GDecls> ";" <r:@R>              => Stmt::new(l, r, StmtData::Decl(d)),
-    <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => Stmt::new(l, r, StmtData::Ass(n, e)),
-    <l:@L> <n:GIdent> "++" ";" <r:@R>         => Stmt::new(l, r, StmtData::Incr(n)),
-    <l:@L> <n:GIdent> "--" ";" <r:@R>         => Stmt::new(l, r, StmtData::Decr(n)),
-    <l:@L> "return" <e:GExp> ";" <r:@R>       => Stmt::new(l, r, StmtData::Ret(e)),
-    <l:@L> "return" ";" <r:@R>                => Stmt::new(l, r, StmtData::VRet),
+GSimpleStmt: Box<StmtNode> = {
+    <l:@L> ";" <r:@R>                         => StmtNode::new(l, r, Stmt::BStmt(Block::new(l, r, vec![]))),
+    <l:@L> <e:GExp> ";" <r:@R>                => StmtNode::new(l, r, Stmt::EStmt(e)),
+    <l:@L> <b:GBlock> <r:@R>                  => StmtNode::new(l, r, Stmt::BStmt(b)),
+    <l:@L> <d:GDecls> ";" <r:@R>              => StmtNode::new(l, r, Stmt::Decl(d)),
+    <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => StmtNode::new(l, r, Stmt::Ass(n, e)),
+    <l:@L> <n:GIdent> "++" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Incr(n)),
+    <l:@L> <n:GIdent> "--" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Decr(n)),
+    <l:@L> "return" <e:GExp> ";" <r:@R>       => StmtNode::new(l, r, Stmt::Ret(e)),
+    <l:@L> "return" ";" <r:@R>                => StmtNode::new(l, r, Stmt::VRet),
 }

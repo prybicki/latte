@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Error};
+use std::fmt::{Display, Formatter, Error, Debug};
 
 pub struct Program {
     pub span: Span,
@@ -28,51 +28,54 @@ pub struct VarDecls {
 pub struct DeclBody {
     pub span: Span,
     pub ident: Ident,
-    pub init: Option<Box<Exp>>
+    pub init: Option<Box<ExpNode>>
 }
 
 pub struct Block {
     pub span: Span,
-    pub stmts: Vec<Box<Stmt>>,
+    pub stmts: Vec<Box<StmtNode>>,
 }
 
-pub struct Exp {
-    pub exp: ExpData,
+pub struct ExpNode {
+    pub exp: Exp,
     pub ttype: Option<Type>,
     pub span: Span,
+//    pub optimization: bool
 }
 
-pub enum ExpData {
-    Unary(UnaryOp, Box<Exp>),
-    Binary(Box<Exp>, BinaryOp, Box<Exp>),
-    Call(Ident, Vec<Box<Exp>>),
+pub enum Exp {
+    Unary(UnaryOp, Box<ExpNode>),
+    Binary(Box<ExpNode>, BinaryOp, Box<ExpNode>),
+    Call(Ident, Vec<Box<ExpNode>>),
     Int(i32),
     Bool(bool),
     Str(String),
     Var(Ident),
 }
 
-pub struct Stmt {
+pub struct StmtNode {
     pub span: Span,
-    pub stmt: StmtData,
+    pub stmt: Stmt,
 }
 
-pub enum StmtData {
+pub enum Stmt {
     BStmt(Block),
-    Decl(Vec<VarDecl>),
-    Ass(Ident, Box<Exp>),
+    Decl(VarDecls),
+    Ass(Ident, Box<ExpNode>),
     Incr(Ident),
     Decr(Ident),
-    Ret(Box<Exp>),
+    Ret(Box<ExpNode>),
     VRet,
-    Cond(Box<Exp>, Block, Option<Block>),
-    While(Box<Exp>, Block),
-    EStmt(Box<Exp>),
+    Cond(Box<ExpNode>, Block, Option<Block>),
+    While(Box<ExpNode>, Block),
+    EStmt(Box<ExpNode>),
 }
 
 // *** *** *** Minors *** *** *** //
 
 pub type Ident = String;
+
+type FnSignature = (Type, Vec<Type>);
 
 #[derive(Clone,Copy)]
 pub struct Span(pub usize, pub usize);
@@ -102,45 +105,46 @@ pub enum BinaryOp {
 // *** *** *** Impls *** *** *** //
 
 impl TypeSpecifier {
-    pub fn new(ttype: Type, l: usize, r: usize) -> TypeSpecifier {
+    pub fn new(l: usize, r: usize, ttype: Type) -> TypeSpecifier {
         TypeSpecifier { span: Span(l, r), ttype}
     }
 }
 
-impl Exp {
-    pub fn new(l: usize, r: usize, exp: ExpData) -> Box<Exp> {
-        Box::new(Exp { exp: exp, ttype: None, span: Span(l, r) })
+impl ExpNode {
+    pub fn new(l: usize, r: usize, exp: Exp) -> Box<ExpNode> {
+        Box::new(ExpNode { exp, ttype: None, span: Span(l, r) })
     }
 
-    pub fn new_un(l: usize, r: usize, op: Op, exp: Box<Exp>) -> Box<Exp> {
-        Self::new(l, r, ExpData::Unary(op, exp))
+    pub fn new_un(l: usize, r: usize, op: UnaryOp, exp: Box<ExpNode>) -> Box<ExpNode> {
+        Self::new(l, r, Exp::Unary(op, exp))
     }
 
-    pub fn new_bin(l: usize, r:usize, op: Op, lexp: Box<Exp>, rexp: Box<Exp>) -> Box<Exp> {
-        Self::new(l, r, ExpData::Binary(lexp, op, rexp))
+    pub fn new_bin(l: usize, r:usize, op: BinaryOp, lexp: Box<ExpNode>, rexp: Box<ExpNode>) -> Box<ExpNode> {
+        Self::new(l, r, Exp::Binary(lexp, op, rexp))
     }
 }
 
-impl Stmt {
-    pub fn new(l: usize, r: usize, stmt: StmtData) -> Box<Stmt> {
-        Box::new(Stmt {span: Span(l, r), stmt})
+impl StmtNode {
+    pub fn new(l: usize, r: usize, stmt: Stmt) -> Box<StmtNode> {
+        Box::new(StmtNode {span: Span(l, r), stmt})
     }
 }
 
 impl Block {
-    pub fn new(l: usize, r: usize, stmts: Vec<Box<Stmt>>) -> Block {
+    pub fn new(l: usize, r: usize, stmts: Vec<Box<StmtNode>>) -> Block {
         Block {span: Span(l, r), stmts}
     }
 }
 
-impl Type {
-    pub fn is_valid(&self) -> bool {
-        *self != Type::Invalid && *self != Type::Unknown
+pub fn is_valid(ttype: &Option<Type>) -> bool {
+    match ttype {
+        Some(t) if t != &Type::Invalid => true,
+        _ => false
     }
 }
 
 impl FnDef {
-    pub fn get_signature(&self) -> (Type, Vec<Type>) {
+    pub fn get_signature(&self) -> FnSignature {
         (self.type_spec.ttype, self.params.iter().map(|VarDecls {type_spec: ts, ..}| ts.ttype).collect())
     }
 }
@@ -176,12 +180,12 @@ impl Display for BinaryOp {
     }
 }
 
-impl Display for ExpData {
+impl Display for Exp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
-            ExpData::Unary(op, e) => write!(f, "{}{}", op, e),
-            ExpData::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
-            ExpData::Call(ident, args) => {
+            Exp::Unary(op, e) => write!(f, "{}{}", op, e),
+            Exp::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
+            Exp::Call(ident, args) => {
                 let mut args_text = String::new();
                 for arg in args.iter() {
                     args_text.push_str(&(**arg).to_string());
@@ -190,27 +194,39 @@ impl Display for ExpData {
                 let args_text = &args_text[0..args_text.len()-2];
                 write!(f, "{}({})", ident, args_text)
             }
-            ExpData::Int(v) => write!(f, "{}", v),
-            ExpData::Bool(v) => write!(f, "b{}", v),
-            ExpData::Str(v) => write!(f, "{}", v),
-            ExpData::Var(v) => write!(f, "{}", v),
+            Exp::Int(v) => write!(f, "{}", v),
+            Exp::Bool(v) => write!(f, "b{}", v),
+            Exp::Str(v) => write!(f, "{}", v),
+            Exp::Var(v) => write!(f, "{}", v),
         }
     }
 }
 
-impl Display for Type {
+impl Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
             Type::Int => write!(f, "int"),
             Type::Bool => write!(f, "boolean"),
             Type::Str => write!(f, "string"),
             Type::Void => write!(f, "void"),
-            _ => write!(f, "<invalid/unknown>")
+            Type::Invalid => write!(f, "<invalid>")
         }
     }
 }
 
-impl Display for Exp {
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        self.fmt(f)
+    }
+}
+
+impl Debug for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        self.fmt(f)
+    }
+}
+
+impl Display for ExpNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         return self.exp.fmt(f);
     }
