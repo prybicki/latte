@@ -9,7 +9,7 @@ pub struct FnDef {
     pub span: Span,
     pub type_spec: TypeSpecifier,
     pub ident: Ident,
-    pub params: Vec<VarDecl>,
+    pub params: Vec<VarDecls>,
     pub block: Block,
 }
 
@@ -18,9 +18,15 @@ pub struct TypeSpecifier {
     pub ttype: Type,
 }
 
-pub struct VarDecl {
+pub struct VarDecls {
     pub span: Span,
     pub type_spec: TypeSpecifier,
+    pub vars: Vec<DeclBody>
+}
+
+// Helper struct for parsing, not a part of the ast.
+pub struct DeclBody {
+    pub span: Span,
     pub ident: Ident,
     pub init: Option<Box<Exp>>
 }
@@ -47,8 +53,8 @@ pub enum ExpData {
 }
 
 pub struct Stmt {
-    span: Span,
-    stmt: StmtData,
+    pub span: Span,
+    pub stmt: StmtData,
 }
 
 pub enum StmtData {
@@ -66,11 +72,10 @@ pub enum StmtData {
 
 // *** *** *** Minors *** *** *** //
 
-#[derive(Clone)]
 pub type Ident = String;
 
-#[derive(Debug,Clone,Copy)]
-pub struct Span(usize, usize);
+#[derive(Clone,Copy)]
+pub struct Span(pub usize, pub usize);
 
 #[derive(Clone,Copy,PartialEq)]
 pub enum Type {
@@ -96,17 +101,35 @@ pub enum BinaryOp {
 
 // *** *** *** Impls *** *** *** //
 
-impl ExpData {
-    pub fn new(exp: ExpData, l: usize, r: usize) -> Box<Exp> {
-        Box::new(Exp { exp: exp, ttype: Type::Unknown, span: Span(l, r) })
+impl TypeSpecifier {
+    pub fn new(ttype: Type, l: usize, r: usize) -> TypeSpecifier {
+        TypeSpecifier { span: Span(l, r), ttype}
+    }
+}
+
+impl Exp {
+    pub fn new(l: usize, r: usize, exp: ExpData) -> Box<Exp> {
+        Box::new(Exp { exp: exp, ttype: None, span: Span(l, r) })
     }
 
-    pub fn new_un(op: Op, exp: Box<Exp>, l: usize, r: usize) -> Box<Exp> {
-        Self::new(ExpData::Unary(op, exp), l, r)
+    pub fn new_un(l: usize, r: usize, op: Op, exp: Box<Exp>) -> Box<Exp> {
+        Self::new(l, r, ExpData::Unary(op, exp))
     }
 
-    pub fn new_bin(op: Op, lexp: Box<Exp>, rexp: Box<Exp>, l: usize, r:usize) -> Box<Exp> {
-        Self::new(ExpData::Binary(lexp, op, rexp), l, r)
+    pub fn new_bin(l: usize, r:usize, op: Op, lexp: Box<Exp>, rexp: Box<Exp>) -> Box<Exp> {
+        Self::new(l, r, ExpData::Binary(lexp, op, rexp))
+    }
+}
+
+impl Stmt {
+    pub fn new(l: usize, r: usize, stmt: StmtData) -> Box<Stmt> {
+        Box::new(Stmt {span: Span(l, r), stmt})
+    }
+}
+
+impl Block {
+    pub fn new(l: usize, r: usize, stmts: Vec<Box<Stmt>>) -> Block {
+        Block {span: Span(l, r), stmts}
     }
 }
 
@@ -116,12 +139,9 @@ impl Type {
     }
 }
 
-
-
 impl FnDef {
     pub fn get_signature(&self) -> (Type, Vec<Type>) {
-        let FnDef(ttype, _, params, _) = self;
-        (*ttype, params.iter().map(|VarDecl(t, _, _)| *t).collect())
+        (self.type_spec.ttype, self.params.iter().map(|VarDecls {type_spec: ts, ..}| ts.ttype).collect())
     }
 }
 
@@ -195,6 +215,3 @@ impl Display for Exp {
         return self.exp.fmt(f);
     }
 }
-
-// Helper struct for parsing, not a part of the ast.
-pub struct DeclBody(pub Ident, pub Option<Box<Exp>>);

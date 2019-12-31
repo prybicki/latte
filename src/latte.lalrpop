@@ -39,28 +39,24 @@ GOperandMul: BinaryOp = {
     "%" => BinaryOp::Mod,
 }
 
-GInteger: Box<Exp> = {
-    <l:@L> <s: r"[+-]"?> <v:r"[0-9]+"> <r:@R> => {
+GInteger: i32 = {
+    <s: r"[+-]"?> <v:r"[0-9]+"> => {
         // panic possible here TODO handle
         let abs = i32::from_str(v).unwrap();
-        let val = match s {
+        match s {
             Some("-") => -abs,
             _ => abs
-        };
-        Exp::new(ExpData::Int(val), l, r)
+        }
     },
 }
 
-GBoolean: Box<TypedExp> = {
-    <l:@L> "true" <r:@R> =>  Exp::new(ExpData::Bool(true), l, r),
-    <l:@L> "false" <r:@R> => Exp::new(ExpData::Bool(false), l, r),
+GBoolean: bool = {
+    "true" =>  true,
+    "false" => false,
 }
 
-GString: Box<TypedExp> = {
-    <l:@L> <s:r#""([^,",\\]|\\")*""#> <r:@R> => {
-        let escaped = s[1..s.len()-1].replace(r#"\""#, r#"""#);
-        Exp::new(ExpData::Str(escaped), l, r)
-    },
+GString: String = {
+    <l:@L> <s:r#""([^,",\\]|\\")*""#> <r:@R> => s[1..s.len()-1].replace(r#"\""#, r#"""#),
 }
 
 // Left Associative Expression Macro
@@ -103,8 +99,8 @@ GExpAtom: Box<TypedExp> = {
     <l:@L> <e:GInteger> <r:@R> => Exp::new(l, r, ExpData::Int(e)),
     <l:@L> <e:GBoolean> <r:@R> => Exp::new(l, r, ExpData::Bool(e)),
     <l:@L> <e:GString>  <r:@R> => Exp::new(l, r, ExpData::Str(e)),
-    <l:@L> <e:GIdent>   <r:@R> => Exp::new(l, r, ExpData::Var(e)),
-    <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => Exp::new(l, r, Exp::Call(n, a)),
+    <l:@L> <n:GIdent>   <r:@R> => Exp::new(l, r, ExpData::Var(n)),
+    <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => Exp::new(l, r, ExpData::Call(n, a)),
     "(" <GExpOr> ")" => <>,
 }
 
@@ -144,7 +140,7 @@ GDecls: VarDecls = {
 };
 
 GBlock: Block = {
-     <l:@L> "{" <s:GStmt*> "}" <r:@R> => Block::new(l, r, s},
+     <l:@L> "{" <s:GStmt*> "}" <r:@R> => Block::new(l, r, s),
 }
 
 // https://en.wikipedia.org/wiki/Dangling_else
@@ -155,26 +151,26 @@ GStmt: Box<Stmt> = {
 }
 
 GOpenStmt: Box<Stmt> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => Stmt::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Option::None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => Stmt::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Option::None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => Stmt::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Option::Some(Block{span: (t.span.0, t.span.1), stmts: vec![f]}))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => Stmt::new(l, r, Stmt::While(c,  Block::new(t.span.0, t.span.1, vec![t]))),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => Stmt::new(l, r, StmtData::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(t.span.0, t.span.1, vec![f])))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => Stmt::new(l, r, StmtData::While(c,  Block::new(t.span.0, t.span.1, vec![t]))),
 }
 
 GClosedStmt: Box<Stmt> = {
-    "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt>      => Stmt::new(Stmt::Cond(c,  Block::new(t.span.0, t.span.1, vec![t]), Option::Some(Block::new(f.span.0, f.span.1, vec![f])))),
-    "while" "(" <c:GExp> ")" <t:GClosedStmt>                          => Stmt::new(Stmt::While(c, Block::new(t.span.0, t.span.1, vec![t]))),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => Stmt::new(l, r, StmtData::Cond(c,  Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => Stmt::new(l, r, StmtData::While(c, Block::new(t.span.0, t.span.1, vec![t]))),
     <GSimpleStmt> => <>,
 }
 
 GSimpleStmt: Box<Stmt> = {
-    <l:@L> ";" <r:@R>                         => Stmt::new(l, r, Stmt::BStmt(Block(vec![]))),
-    <l:@L> <e:GExp> ";" <r:@R>                => Stmt::new(l, r, Stmt::EStmt(e)),
-    <l:@L> <b:GBlock> <r:@R>                  => Stmt::new(l, r, Stmt::BStmt(b)),
-    <l:@L> <d:GDecls> ";" <r:@R>              => Stmt::new(l, r, Stmt::Decl(d)),
-    <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => Stmt::new(l, r, Stmt::Ass(n, e)),
-    <l:@L> <n:GIdent> "++" ";" <r:@R>         => Stmt::new(l, r, Stmt::Incr(n)),
-    <l:@L> <n:GIdent> "--" ";" <r:@R>         => Stmt::new(l, r, Stmt::Decr(n)),
-    <l:@L> "return" <e:GExp> ";" <r:@R>       => Stmt::new(l, r, Stmt::Ret(e)),
-    <l:@L> "return" ";" <r:@R>                => Stmt::new(l, r, Stmt::VRet),
+    <l:@L> ";" <r:@R>                         => Stmt::new(l, r, StmtData::BStmt(Block(vec![]))),
+    <l:@L> <e:GExp> ";" <r:@R>                => Stmt::new(l, r, StmtData::EStmt(e)),
+    <l:@L> <b:GBlock> <r:@R>                  => Stmt::new(l, r, StmtData::BStmt(b)),
+    <l:@L> <d:GDecls> ";" <r:@R>              => Stmt::new(l, r, StmtData::Decl(d)),
+    <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => Stmt::new(l, r, StmtData::Ass(n, e)),
+    <l:@L> <n:GIdent> "++" ";" <r:@R>         => Stmt::new(l, r, StmtData::Incr(n)),
+    <l:@L> <n:GIdent> "--" ";" <r:@R>         => Stmt::new(l, r, StmtData::Decr(n)),
+    <l:@L> "return" <e:GExp> ";" <r:@R>       => Stmt::new(l, r, StmtData::Ret(e)),
+    <l:@L> "return" ";" <r:@R>                => Stmt::new(l, r, StmtData::VRet),
 }
