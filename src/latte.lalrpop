@@ -114,7 +114,15 @@ GType: TypeSpecifier = {
     <l:@L> "int" <r:@R>     => TypeSpecifier::new(l, r, Type::Int),
     <l:@L> "boolean" <r:@R> => TypeSpecifier::new(l, r, Type::Bool),
     <l:@L> "string" <r:@R>  => TypeSpecifier::new(l, r, Type::Str),
+}
+
+GVoid: TypeSpecifier = {
     <l:@L> "void" <r:@R>    => TypeSpecifier::new(l, r, Type::Void),
+}
+
+GTypeOrVoid: TypeSpecifier = {
+    GType => <>,
+    GVoid => <>
 }
 
 GParam: VarDecl = {
@@ -122,8 +130,8 @@ GParam: VarDecl = {
 };
 
 GFnDef: FnDef = {
-    <l:@L> <t:GType> <n:GIdent> "(" <p:GList<GParam, ",">> ")" <b:GBlock> <r:@R> => {
-        FnDef {span: Span(l, r), type_spec: t, ident: n, params: p, block: b}
+    <l:@L> <t:GTypeOrVoid> <n:GIdent> "(" <p:GList<GParam, ",">> ")" <b:GBlock> <r:@R> => {
+        FnDef {span: Span(l, r), type_spec: t, ident: n, params: p, body: b}
     }
 };
 
@@ -139,8 +147,8 @@ GDecls: VarDecl = {
     <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: bs},
 };
 
-GBlock: Block = {
-     <l:@L> "{" <s:GStmt*> "}" <r:@R> => Block::new(l, r, s),
+GBlock: Box<StmtNode> = {
+     <l:@L> "{" <s:GStmt*> "}" <r:@R> => StmtNode::new(l, r, Stmt::BStmt(s)),
 }
 
 // https://en.wikipedia.org/wiki/Dangling_else
@@ -151,22 +159,22 @@ GStmt: Box<StmtNode> = {
 }
 
 GOpenStmt: Box<StmtNode> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => StmtNode::new(l, r, Stmt::Cond(c,   Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => StmtNode::new(l, r, Stmt::While(c,  Block::new(t.span.0, t.span.1, vec![t]))),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => StmtNode::new(l, r, Stmt::Cond(c,  t, None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => StmtNode::new(l, r, Stmt::Cond(c,  t, None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => StmtNode::new(l, r, Stmt::Cond(c,  t, Some(f))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => StmtNode::new(l, r, Stmt::While(c, t)),
 }
 
 GClosedStmt: Box<StmtNode> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => StmtNode::new(l, r, Stmt::Cond(c,  Block::new(t.span.0, t.span.1, vec![t]), Some(Block::new(f.span.0, f.span.1, vec![f])))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => StmtNode::new(l, r, Stmt::While(c, Block::new(t.span.0, t.span.1, vec![t]))),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => StmtNode::new(l, r, Stmt::Cond(c, t, Some(f))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => StmtNode::new(l, r, Stmt::While(c, t)),
     <GSimpleStmt> => <>,
 }
 
 GSimpleStmt: Box<StmtNode> = {
-    <l:@L> ";" <r:@R>                         => StmtNode::new(l, r, Stmt::BStmt(Block::new(l, r, vec![]))),
+    <GBlock>                                  => <>,
+    <l:@L> ";" <r:@R>                         => StmtNode::new(l, r, Stmt::BStmt(vec![])),
     <l:@L> <e:GExp> ";" <r:@R>                => StmtNode::new(l, r, Stmt::EStmt(e)),
-    <l:@L> <b:GBlock> <r:@R>                  => StmtNode::new(l, r, Stmt::BStmt(b)),
     <l:@L> <d:GDecls> ";" <r:@R>              => StmtNode::new(l, r, Stmt::Decl(d)),
     <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => StmtNode::new(l, r, Stmt::Ass(n, e)),
     <l:@L> <n:GIdent> "++" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Incr(n)),

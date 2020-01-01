@@ -27,10 +27,10 @@ pub fn gen_multiple_fn_def(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
     }
 }
 
-pub fn gen_multiple_arg_def(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
+pub fn gen_multiple_var_decl(ident: &ast::Ident, span: ast::Span) -> Diagnostic {
     Diagnostic {
-        message: format!("multiple declaration of parameter {}", ident),
-        details: Some((span, "defined second time here".to_owned()))
+        message: format!("variable already declared in current scope {}", ident),
+        details: Some((span, "second definition here".to_owned()))
     }
 }
 
@@ -42,7 +42,7 @@ pub fn gen_undeclared_variable_in_stmt(ident: &ast::Ident, span: ast::Span) -> D
 }
 
 pub fn gen_invalid_expression_type(expected: ast::Type, actual: ast::Type, span: ast::Span) -> Diagnostic {
-    Diagnostic{
+    Diagnostic {
         message: format!("invalid expression type"),
         details: Some((span, format!("expected {}, got {}", expected, actual)))
     }

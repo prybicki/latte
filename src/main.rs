@@ -81,7 +81,7 @@ fn test_case(path: &str, expect_success: bool) -> bool {
         Ok(_) => success = expect_success,
     }
     eprintln!("{}", if success { "OK" } else { "ERR" });
-    if let Err(diags) = result {
+    if let Err(_) = result {
 //        diag::print_all(&diags, &file);
     }
     return success;

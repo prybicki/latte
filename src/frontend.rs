@@ -66,14 +66,53 @@ pub fn remove_comments(text: &str) -> String {
 // no return
 // TODO declared variable must not be void
 
-// todo refactor t, typ -> type
-
 // first pass -> expression types
 // second pass -> valid expression types in statements
 
 // mismatched types (expressions, variables, returns, parameters)
 
-type Env<'a> = HashMap<Ident, Type>;
+// TODO:
+// no return (especially dead return: if(false) return) / return only in some cases
+
+struct ScopedMap<K,V> {
+    scopes: Vec<HashMap<K,V>>,
+}
+
+impl<K,V> ScopedMap<K,V>
+    where K: std::cmp::Eq + std::hash::Hash
+{
+    fn new() -> ScopedMap<K,V> {
+        ScopedMap {scopes: Vec::new()}
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::<K, V>::new())
+    }
+
+    fn pop_scope(&mut self) -> Option<HashMap<K,V>> {
+        self.scopes.pop()
+    }
+
+    fn get(&self, key: &K) -> Option<&V> {
+        for scope in self.scopes.iter().rev() {
+            let x = scope.get(key);
+            if x.is_some() {
+                return x
+            }
+        }
+        return None
+    }
+
+    fn insert(&mut self, key: K, val: V) -> Option<V> {
+        if self.scopes.last().is_none() {
+            self.push_scope();
+        }
+        let top_scope = self.scopes.last_mut().unwrap();
+        return top_scope.insert(key, val);
+    }
+}
+
+type Env<'a> = ScopedMap<Ident, Type>;
 type FEnv<'a> = HashMap<Ident, (Type, Vec<Type>)>;
 type Diags = Vec<diag::Diagnostic>;
 
@@ -114,7 +153,7 @@ fn get_binary_op_type(op: &BinaryOp, lexp_type: &Option<Type>, rexp_type: &Optio
         _ => Type::Invalid,
     })
 }
-//
+
 fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags) {
     exp_node.ttype = match &mut exp_node.exp {
         Exp::Unary(op, inner) => {
@@ -171,7 +210,7 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
             }
         },
         Exp::Var(ident) => {
-            match env.get(ident.as_str()) {
+            match env.get(&ident) {
                 None => {
                     diags.push(diag::Diagnostic {
                         message: format!("undeclared variable {}", ident),
@@ -196,22 +235,24 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
                 diags.push(diag::gen_invalid_expression_type(decls.type_spec.ttype, init_exp_node.ttype.unwrap(), init_exp_node.span));
             }
         }
-        // TODO check if already declared
+
         // add variable disregarding init exp type match
-        env.insert(var.ident.clone(), decls.type_spec.ttype);
+        match env.insert(var.ident.clone(), decls.type_spec.ttype) {
+            Some(_) => diags.push(diag::gen_multiple_var_decl(&var.ident, var.span)),
+            None => ()
+        }
     }
 }
 
-fn verify_block(block: &mut Block, fenv: &FEnv, env: &Env, diags: &mut Diags) {
-    let mut block_env = env.clone();
-    for stmt_node in &mut block.stmts {
-        verify_stmt(stmt_node, fenv, &mut block_env, diags)
-    }
-}
-
-fn verify_stmt(stmt_node: &mut StmtNode, fenv: &FEnv, env: &mut Env, diags: &mut Diags) {
+fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut Env, diags: &mut Diags) {
     match &mut stmt_node.stmt {
-        Stmt::BStmt(block) => verify_block(block, fenv, env, diags),
+        Stmt::BStmt(stmts) => {
+            env.push_scope();
+            for stmt_node in stmts {
+                verify_stmt(stmt_node, fn_type,fenv, env, diags)
+            }
+            env.pop_scope();
+        },
         Stmt::Decl(decls) => verify_decls(decls, fenv, env, diags),
         Stmt::Ass(ident, exp_node) => {
             verify_exp(exp_node, fenv, env, diags);
@@ -236,25 +277,58 @@ fn verify_stmt(stmt_node: &mut StmtNode, fenv: &FEnv, env: &mut Env, diags: &mut
                 }
             }
         },
-        // TODO
-        Stmt::Ret(_) => {},
-        Stmt::VRet => {},
-        Stmt::Cond(_, _, _) => {},
-        Stmt::While(_, _) => {},
-        Stmt::EStmt(_) => {},
+        Stmt::Ret(exp) => {
+            verify_exp(exp, fenv, env, diags);
+            let ttype = exp.ttype.unwrap();
+            if &ttype != fn_type {
+                diags.push(diag::Diagnostic {
+                    message: format!("invalid return type"),
+                    details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, ttype)))
+                })
+            }
+        },
+        Stmt::VRet => {
+            if fn_type != &Type::Void {
+                diags.push(diag::Diagnostic {
+                    message: format!("invalid return type"),
+                    details: Some((stmt_node.span, format!("expected {}, found none", fn_type)))
+                })
+            }
+        },
+        Stmt::Cond(cond, tstmt, fstmt) => {
+            verify_exp(cond, fenv, env, diags);
+            verify_stmt(tstmt, fn_type, fenv, env, diags);
+            if fstmt.is_some() {
+                verify_stmt(fstmt.as_mut().unwrap(), fn_type, fenv, env, diags);
+            }
+            let ttype = cond.ttype.unwrap();
+            if ttype != Type::Bool {
+                diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
+            }
+        },
+        Stmt::While(cond, body) => {
+            verify_exp(cond, fenv, env, diags);
+            verify_stmt(body, fn_type, fenv, env, diags);
+            let ttype = cond.ttype.unwrap();
+            if ttype != Type::Bool {
+                diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
+            }
+        },
+        Stmt::EStmt(exp) => verify_exp(exp, fenv, env, diags),
     }
-
 }
-//
 
-//
 pub fn verify_program(prog: &mut Program) -> Diags {
     let mut diags = Vec::new();
 
     // build function env
     let mut fenv = FEnv::new();
-    for fdef in &prog.functions {
+    fenv.insert("readInt".to_owned(), (Type::Int, vec![]));
+    fenv.insert("readString".to_owned(), (Type::Str, vec![]));
+    fenv.insert("printInt".to_owned(), (Type::Void, vec![Type::Int]));
+    fenv.insert("printString".to_owned(), (Type::Void, vec![Type::Str]));
 
+    for fdef in &prog.functions {
         // verify function definitions are unique
         match fenv.insert(fdef.ident.clone(), fdef.get_signature()) {
             Some(_) => diags.push(diag::gen_multiple_fn_def(&fdef.ident, fdef.span)),
@@ -273,15 +347,12 @@ pub fn verify_program(prog: &mut Program) -> Diags {
     // verify each function code
     for fdef in &mut prog.functions {
         let mut env = Env::new();
-        for param in &fdef.params {
-            // verify function arguments are unique
-            let decl_body = param.vars.first().unwrap();
-            match env.insert(decl_body.ident.clone(), param.type_spec.ttype) {
-                Some(_) => diags.push(diag::gen_multiple_arg_def(&decl_body.ident, decl_body.span)),
-                None => ()
-            }
+        for decls in &mut fdef.params {
+            verify_decls(decls, &fenv, &mut env, &mut diags);
         }
-        verify_block(&mut fdef.block, &fenv, &env, &mut diags);
+        verify_stmt(&mut fdef.body, &fdef.type_spec.ttype, &fenv, &mut env, &mut diags);
+
+//        if
     }
 
     return diags;

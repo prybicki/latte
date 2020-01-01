@@ -10,7 +10,7 @@ pub struct FnDef {
     pub type_spec: TypeSpecifier,
     pub ident: Ident,
     pub params: Vec<VarDecl>,
-    pub block: Block,
+    pub body: Box<StmtNode>,
 }
 
 pub struct TypeSpecifier {
@@ -29,11 +29,6 @@ pub struct DeclBody {
     pub span: Span,
     pub ident: Ident,
     pub init: Option<Box<ExpNode>>
-}
-
-pub struct Block {
-    pub span: Span,
-    pub stmts: Vec<Box<StmtNode>>,
 }
 
 pub struct ExpNode {
@@ -56,18 +51,19 @@ pub enum Exp {
 pub struct StmtNode {
     pub span: Span,
     pub stmt: Stmt,
+//    pub ret: bool // always returns
 }
 
 pub enum Stmt {
-    BStmt(Block),
+    BStmt(Vec<Box<StmtNode>>),
     Decl(VarDecl),
     Ass(Ident, Box<ExpNode>),
     Incr(Ident),
     Decr(Ident),
     Ret(Box<ExpNode>),
     VRet,
-    Cond(Box<ExpNode>, Block, Option<Block>),
-    While(Box<ExpNode>, Block),
+    Cond(Box<ExpNode>, Box<StmtNode>, Option<Box<StmtNode>>),
+    While(Box<ExpNode>, Box<StmtNode>),
     EStmt(Box<ExpNode>),
 }
 
@@ -127,12 +123,6 @@ impl ExpNode {
 impl StmtNode {
     pub fn new(l: usize, r: usize, stmt: Stmt) -> Box<StmtNode> {
         Box::new(StmtNode {span: Span(l, r), stmt})
-    }
-}
-
-impl Block {
-    pub fn new(l: usize, r: usize, stmts: Vec<Box<StmtNode>>) -> Block {
-        Block {span: Span(l, r), stmts}
     }
 }
 
