@@ -51,7 +51,7 @@ pub enum Exp {
 pub struct StmtNode {
     pub span: Span,
     pub stmt: Stmt,
-//    pub ret: bool // always returns
+    pub ret: Option<bool> // always returns
 }
 
 pub enum Stmt {
@@ -122,7 +122,7 @@ impl ExpNode {
 
 impl StmtNode {
     pub fn new(l: usize, r: usize, stmt: Stmt) -> Box<StmtNode> {
-        Box::new(StmtNode {span: Span(l, r), stmt})
+        Box::new(StmtNode {span: Span(l, r), stmt, ret: None})
     }
 }
 

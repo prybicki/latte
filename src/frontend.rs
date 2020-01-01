@@ -245,15 +245,23 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
 }
 
 fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut Env, diags: &mut Diags) {
-    match &mut stmt_node.stmt {
+    stmt_node.ret = match &mut stmt_node.stmt {
         Stmt::BStmt(stmts) => {
             env.push_scope();
-            for stmt_node in stmts {
+            for stmt_node in stmts.iter_mut() {
                 verify_stmt(stmt_node, fn_type,fenv, env, diags)
             }
             env.pop_scope();
+
+            match stmts.last() {
+                Some(stmt) => stmt.ret,
+                None => Some(false)
+            }
         },
-        Stmt::Decl(decls) => verify_decls(decls, fenv, env, diags),
+        Stmt::Decl(decls) => {
+            verify_decls(decls, fenv, env, diags);
+            Some(false)
+        },
         Stmt::Ass(ident, exp_node) => {
             verify_exp(exp_node, fenv, env, diags);
             match env.get(ident) {
@@ -265,7 +273,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                         diags.push(diag::gen_invalid_expression_type(*var_type, exp_node.ttype.unwrap(), exp_node.span));
                     }
                 }
-            }
+            };
+            Some(false)
         },
         Stmt::Incr(ident) | Stmt::Decr(ident) => {
             match env.get(ident) {
@@ -275,7 +284,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                         diags.push(diag::gen_invalid_expression_type(Type::Int, *ttype, stmt_node.span));
                     }
                 }
-            }
+            };
+            Some(false)
         },
         Stmt::Ret(exp) => {
             verify_exp(exp, fenv, env, diags);
@@ -285,7 +295,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                     message: format!("invalid return type"),
                     details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, ttype)))
                 })
-            }
+            };
+            Some(true)
         },
         Stmt::VRet => {
             if fn_type != &Type::Void {
@@ -293,7 +304,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                     message: format!("invalid return type"),
                     details: Some((stmt_node.span, format!("expected {}, found none", fn_type)))
                 })
-            }
+            };
+            Some(true)
         },
         Stmt::Cond(cond, tstmt, fstmt) => {
             verify_exp(cond, fenv, env, diags);
@@ -305,6 +317,11 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
             if ttype != Type::Bool {
                 diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
             }
+
+            Some(match fstmt {
+                Some(fstmt) => tstmt.ret.unwrap() && fstmt.ret.unwrap(),
+                None => false
+            })
         },
         Stmt::While(cond, body) => {
             verify_exp(cond, fenv, env, diags);
@@ -313,8 +330,13 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
             if ttype != Type::Bool {
                 diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
             }
+
+            Some(false)
         },
-        Stmt::EStmt(exp) => verify_exp(exp, fenv, env, diags),
+        Stmt::EStmt(exp) => {
+            verify_exp(exp, fenv, env, diags);
+            Some(false)
+        },
     }
 }
 
@@ -352,7 +374,14 @@ pub fn verify_program(prog: &mut Program) -> Diags {
         }
         verify_stmt(&mut fdef.body, &fdef.type_spec.ttype, &fenv, &mut env, &mut diags);
 
-//        if
+        if fdef.type_spec.ttype != Type::Void {
+            if !fdef.body.ret.unwrap() {
+                diags.push(diag::Diagnostic {
+                    message: format!("no return statement in non-void function {}", fdef.ident),
+                    details: None
+                });
+            }
+        }
     }
 
     return diags;
