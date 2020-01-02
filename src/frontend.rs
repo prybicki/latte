@@ -116,68 +116,90 @@ type Env<'a> = ScopedMap<Ident, Type>;
 type FEnv<'a> = HashMap<Ident, (Type, Vec<Type>)>;
 type Diags = Vec<diag::Diagnostic>;
 
-fn get_unary_op_type(op: &UnaryOp, exp_type: &Option<Type>) -> Option<Type> {
-    Some(match exp_type {
-        Some(exp_type) => {
-            match (op, exp_type) {
-                (UnaryOp::Neg, Type::Int) =>  Type::Int,
-                (UnaryOp::Not, Type::Bool) => Type::Bool,
-                _ => Type::Invalid
-            }
-        },
-        _ => Type::Invalid,
-    })
+
+fn get_unary_op_typeval(op: &UnaryOp, typeval: &ExpTypeVal) -> ExpTypeVal {
+    match (op, typeval) {
+        (UnaryOp::Neg, ExpTypeVal::Int(Some(v))) => ExpTypeVal::Int(Some(-*v)),
+        (UnaryOp::Not, ExpTypeVal::Bool(Some(v))) => ExpTypeVal::Bool(Some(!*v)),
+        (UnaryOp::Neg, ExpTypeVal::Int(_)) =>  ExpTypeVal::Int(None),
+        (UnaryOp::Not, ExpTypeVal::Bool(_)) => ExpTypeVal::Bool(None),
+        _ => ExpTypeVal::Invalid
+    }
 }
 
-fn get_binary_op_type(op: &BinaryOp, lexp_type: &Option<Type>, rexp_type: &Option<Type>) -> Option<Type> {
-    Some(match (lexp_type, rexp_type) {
-        (Some(lexp_type), Some(rexp_type)) => {
-            match (op, lexp_type, rexp_type) {
-                (BinaryOp::Eq,  l, r) => if l == r { Type::Bool } else { Type::Invalid },
-                (BinaryOp::Neq, l, r) => if l == r { Type::Bool } else { Type::Invalid },
-                (BinaryOp::Or,  Type::Bool, Type::Bool) => Type::Bool,
-                (BinaryOp::And, Type::Bool, Type::Bool) => Type::Bool,
-                (BinaryOp::Gt,  Type::Int, Type::Int) => Type::Bool,
-                (BinaryOp::Gte, Type::Int, Type::Int) => Type::Bool,
-                (BinaryOp::Lt,  Type::Int, Type::Int) => Type::Bool,
-                (BinaryOp::Lte, Type::Int, Type::Int) => Type::Bool,
-                (BinaryOp::Add, Type::Int, Type::Int) => Type::Int,
-                (BinaryOp::Add, Type::Str, Type::Str) => Type::Str,
-                (BinaryOp::Sub, Type::Int, Type::Int) => Type::Int,
-                (BinaryOp::Mul, Type::Int, Type::Int) => Type::Int,
-                (BinaryOp::Div, Type::Int, Type::Int) => Type::Int,
-                (BinaryOp::Mod, Type::Int, Type::Int) => Type::Int,
-                _ => Type::Invalid
-            }
-        },
-        _ => Type::Invalid,
-    })
+fn get_binary_op_typeval(op: &BinaryOp, ltypeval: &ExpTypeVal, rtypeval: &ExpTypeVal) -> ExpTypeVal {
+    // TODO: handle string concatenation
+    // TODO: handle div by zero
+    match (op, ltypeval, rtypeval) {
+        (BinaryOp::Eq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
+        (BinaryOp::Eq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
+        (BinaryOp::Eq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
+        (BinaryOp::Neq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
+        (BinaryOp::Neq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
+        (BinaryOp::Neq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
+        (BinaryOp::Or,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l || *r)),
+        (BinaryOp::And, ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l && *r)),
+
+        (BinaryOp::Gt,  ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Bool(Some(*l > *r)),
+        (BinaryOp::Gte, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Bool(Some(*l >= *r)),
+        (BinaryOp::Lt,  ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Bool(Some(*l < *r)),
+        (BinaryOp::Lte, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Bool(Some(*l <= *r)),
+
+        (BinaryOp::Add, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Int(Some(*l + *r)),
+        (BinaryOp::Sub, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Int(Some(*l - *r)),
+        (BinaryOp::Mul, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r)))  => ExpTypeVal::Int(Some(*l * *r)),
+        (BinaryOp::Mod, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r))) if *r != 0 => ExpTypeVal::Int(Some(*l % *r)),
+        (BinaryOp::Div, ExpTypeVal::Int(Some(l)),  ExpTypeVal::Int(Some(r))) if *r != 0 => ExpTypeVal::Int(Some(*l / *r)),
+
+        (BinaryOp::Eq,  ExpTypeVal::Bool(_),  ExpTypeVal::Bool(_)) => ExpTypeVal::Bool(None),
+        (BinaryOp::Eq,  ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Eq,  ExpTypeVal::Str(_),   ExpTypeVal::Str(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Neq,  ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => ExpTypeVal::Bool(None),
+        (BinaryOp::Neq,  ExpTypeVal::Int(_),  ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Neq,  ExpTypeVal::Str(_),  ExpTypeVal::Str(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Or,  ExpTypeVal::Bool(_),  ExpTypeVal::Bool(_)) => ExpTypeVal::Bool(None),
+        (BinaryOp::And, ExpTypeVal::Bool(_),  ExpTypeVal::Bool(_)) => ExpTypeVal::Bool(None),
+        (BinaryOp::Gt,  ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Gte, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Lt,  ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Lte, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Bool(None),
+        (BinaryOp::Add, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Int(None),
+        (BinaryOp::Add, ExpTypeVal::Str(_),   ExpTypeVal::Str(_))  => ExpTypeVal::Str(None),
+        (BinaryOp::Sub, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Int(None),
+        (BinaryOp::Mul, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Int(None),
+        (BinaryOp::Div, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Int(None),
+        (BinaryOp::Mod, ExpTypeVal::Int(_),   ExpTypeVal::Int(_))  => ExpTypeVal::Int(None),
+    _ => ExpTypeVal::Invalid
+    }
 }
 
 fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags) {
-    exp_node.ttype = match &mut exp_node.exp {
+    exp_node.typeval = match &mut exp_node.exp {
         Exp::Unary(op, inner) => {
             verify_exp(inner, fenv, env, diags);
-            let this_type = get_unary_op_type(op, &inner.ttype);
-            if is_valid(&inner.ttype) && !is_valid(&this_type) {
+            let inner_tv = inner.typeval.as_ref().unwrap();
+            let typeval = get_unary_op_typeval(op, inner_tv);
+            if inner_tv.has_valid_type() && !typeval.has_valid_type() {
                 diags.push(diag::Diagnostic{
-                    message: format!("invalid expression type for operand {}", op),
-                    details: Some((inner.span, format!("expression has type {}", inner.ttype.unwrap())))
+                    message: format!("invalid use of operand {}", op),
+                    details: Some((inner.span, format!("type mismatch: {} {}", op, inner_tv.to_type())))
                 });
             }
-            this_type
+            Some(typeval)
         },
         Exp::Binary(lexp_node, op, rexp_node) => {
             verify_exp(lexp_node, fenv, env, diags);
             verify_exp(rexp_node, fenv, env, diags);
-            let this_type = get_binary_op_type(op, &lexp_node.ttype, &rexp_node.ttype);
-            if is_valid(&lexp_node.ttype) && is_valid(&rexp_node.ttype) && !is_valid(&this_type) {
+            let ltv = lexp_node.typeval.as_ref().unwrap();
+            let rtv = rexp_node.typeval.as_ref().unwrap();
+            let typeval = get_binary_op_typeval(op, ltv, rtv);
+            if ltv.has_valid_type() && rtv.has_valid_type() && !typeval.has_valid_type() {
                 diags.push(diag::Diagnostic{
-                    message: format!("invalid expressions types for operand {}", op),
-                    details: Some((exp_node.span, format!("expression has type {} {} {}", lexp_node.ttype.unwrap(), op, rexp_node.ttype.unwrap())))
+                    message: format!("invalid use of operand {}", op),
+                    details: Some((exp_node.span, format!("type mismatch: {} {} {}", ltv.to_type(), op, rtv.to_type())))
                 });
             }
-            this_type
+            Some(typeval)
         },
         Exp::Call(ident, args) => {
             match fenv.get(ident.as_str()) {
@@ -186,17 +208,17 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
                         message: format!("unknown function identifier {}", ident),
                         details: Some((exp_node.span, format!("in this expression")))
                     });
-                    Some(Type::Invalid)
+                    Some(ExpTypeVal::Invalid)
                 },
-                Some((ret_type, param_types)) => {
+                Some((fn_type, param_types)) => {
                     let mut arg_types = Vec::new();
                     for exp_node in args {
                         verify_exp(exp_node, fenv, env, diags);
-                        arg_types.push(exp_node.ttype);
+                        arg_types.push(exp_node.typeval.as_ref().unwrap().to_type());
                     }
 
                     // if any of arguments has invalid type, it was already reported
-                    if let Some(arg_types) = arg_types.into_iter().collect::<Option<Vec<Type>>>() {
+                    if arg_types.iter().all(Type::is_valid) {
                         // all arguments has valid type, check if it matches with the signature
                         if param_types.ne(&arg_types) {
                             diags.push(diag::Diagnostic {
@@ -205,7 +227,8 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
                             })
                         }
                     }
-                    Some(*ret_type)
+                    // TODO possible further optimization here..
+                    Some(ExpTypeVal::from_type(fn_type))
                 }
             }
         },
@@ -216,14 +239,14 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
                         message: format!("undeclared variable {}", ident),
                         details: Some((exp_node.span, format!("in this expression")))
                     });
-                    Some(Type::Invalid)
+                    Some(ExpTypeVal::Invalid)
                 } ,
-                Some(ttype) => Some(*ttype),
+                Some(vtype) => Some(ExpTypeVal::from_type(vtype)),
             }
         },
-        Exp::Int(_)  => Some(Type::Int),
-        Exp::Bool(_) => Some(Type::Bool),
-        Exp::Str(_)  => Some(Type::Str),
+        Exp::Int(v) => Some(ExpTypeVal::Int(Some(*v))),
+        Exp::Bool(v)=> Some(ExpTypeVal::Bool(Some(*v))),
+        Exp::Str(v)=>  Some(ExpTypeVal::Str(Some(v.clone()))),
     }
 }
 
@@ -231,8 +254,9 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
     for var in &mut decls.vars {
         if let Some(init_exp_node) = &mut var.init {
             verify_exp(init_exp_node, fenv, env, diags);
-            if decls.type_spec.ttype != init_exp_node.ttype.unwrap() {
-                diags.push(diag::gen_invalid_expression_type(decls.type_spec.ttype, init_exp_node.ttype.unwrap(), init_exp_node.span));
+            let etv = init_exp_node.typeval.as_ref().unwrap();
+            if etv.to_type() != decls.type_spec.ttype {
+                diags.push(diag::gen_invalid_expression_type(&decls.type_spec.ttype, &etv.to_type(), init_exp_node.span));
             }
         }
 
@@ -269,8 +293,9 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                     diags.push(diag::gen_undeclared_variable_in_stmt(&ident, stmt_node.span));
                 },
                 Some(var_type) => {
-                    if is_valid(&exp_node.ttype) && var_type != &exp_node.ttype.unwrap() {
-                        diags.push(diag::gen_invalid_expression_type(*var_type, exp_node.ttype.unwrap(), exp_node.span));
+                    let etv = exp_node.typeval.as_ref().unwrap();
+                    if etv.has_valid_type() && &etv.to_type() != var_type {
+                        diags.push(diag::gen_invalid_expression_type(var_type, &etv.to_type(), exp_node.span));
                     }
                 }
             };
@@ -279,9 +304,9 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
         Stmt::Incr(ident) | Stmt::Decr(ident) => {
             match env.get(ident) {
                 None => diags.push(diag::gen_undeclared_variable_in_stmt(ident, stmt_node.span)),
-                Some(ttype) => {
-                    if *ttype != Type::Int {
-                        diags.push(diag::gen_invalid_expression_type(Type::Int, *ttype, stmt_node.span));
+                Some(vtype) => {
+                    if *vtype != Type::Int {
+                        diags.push(diag::gen_invalid_expression_type(&Type::Int, vtype, stmt_node.span));
                     }
                 }
             };
@@ -289,11 +314,11 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
         },
         Stmt::Ret(exp) => {
             verify_exp(exp, fenv, env, diags);
-            let ttype = exp.ttype.unwrap();
-            if &ttype != fn_type {
+            let etv = exp.typeval.as_ref().unwrap();
+            if &etv.to_type() != fn_type {
                 diags.push(diag::Diagnostic {
                     message: format!("invalid return type"),
-                    details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, ttype)))
+                    details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, etv.to_type())))
                 })
             };
             Some(true)
@@ -309,26 +334,35 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
         },
         Stmt::Cond(cond, tstmt, fstmt) => {
             verify_exp(cond, fenv, env, diags);
-            verify_stmt(tstmt, fn_type, fenv, env, diags);
-            if fstmt.is_some() {
-                verify_stmt(fstmt.as_mut().unwrap(), fn_type, fenv, env, diags);
-            }
-            let ttype = cond.ttype.unwrap();
-            if ttype != Type::Bool {
-                diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
-            }
 
-            Some(match fstmt {
-                Some(fstmt) => tstmt.ret.unwrap() && fstmt.ret.unwrap(),
-                None => false
-            })
+            let ctv = cond.typeval.as_ref().unwrap();
+            match ctv {
+                ExpTypeVal::Bool(condval) => {
+                    verify_stmt(tstmt, fn_type, fenv, env, diags);
+                    if let Some(fstmt) = fstmt {
+                        verify_stmt(fstmt, fn_type, fenv, env, diags);
+                    }
+
+                    match (&condval, &fstmt) {
+                        (Some(true), _) => tstmt.ret,
+                        (Some(false), Some(_)) => fstmt.as_ref().unwrap().ret,
+                        (None, Some(_)) => Some(tstmt.ret.unwrap() && fstmt.as_ref().unwrap().ret.unwrap()),
+                        _ => Some(false)
+                    }
+                }
+                _ => {
+                    diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv.to_type(), cond.span));
+                    Some(false)
+                }
+            }
         },
         Stmt::While(cond, body) => {
             verify_exp(cond, fenv, env, diags);
             verify_stmt(body, fn_type, fenv, env, diags);
-            let ttype = cond.ttype.unwrap();
-            if ttype != Type::Bool {
-                diags.push(diag::gen_invalid_expression_type(Type::Bool, ttype, cond.span));
+
+            let ctv = cond.typeval.as_ref().unwrap();
+            if ctv.to_type() != Type::Bool {
+                diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv.to_type(), cond.span));
             }
 
             Some(false)

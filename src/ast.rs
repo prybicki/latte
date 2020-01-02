@@ -31,11 +31,62 @@ pub struct DeclBody {
     pub init: Option<Box<ExpNode>>
 }
 
+pub enum ExpTypeVal {
+    Int(Option<i32>),
+    Bool(Option<bool>),
+    Str(Option<String>),
+    Void,
+    Invalid,
+}
+
+impl ExpTypeVal {
+    pub fn from_type(ttype: &Type) -> ExpTypeVal {
+        match ttype {
+            Type::Int     => ExpTypeVal::Int(None),
+            Type::Bool    => ExpTypeVal::Bool(None),
+            Type::Str     => ExpTypeVal::Str(None),
+            Type::Void    => ExpTypeVal::Void,
+            Type::Invalid => ExpTypeVal::Invalid,
+        }
+    }
+
+//    pub fn has_type(&self, ttype: &Type) -> bool {
+//        match (self, ttype) {
+//            (ExpTypeVal::Int(_), &Type::Int) => true,
+//            (ExpTypeVal::Bool(_), &Type::Bool) => true,
+//            (ExpTypeVal::Str(_), &Type::Str) => true,
+//            _ => false
+//        }
+//    }
+
+    pub fn to_type(&self) -> Type {
+        match self {
+            ExpTypeVal::Int(_) => Type::Int,
+            ExpTypeVal::Bool(_) => Type::Bool,
+            ExpTypeVal::Str(_) => Type::Str,
+            ExpTypeVal::Void => Type::Void,
+            ExpTypeVal::Invalid => Type::Invalid,
+        }
+    }
+
+    pub fn has_valid_type(&self) -> bool {
+        self.to_type().is_valid()
+    }
+}
+
+impl Type {
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Type::Invalid => false,
+            _ => true
+        }
+    }
+}
+
 pub struct ExpNode {
     pub exp: Exp,
-    pub ttype: Option<Type>,
     pub span: Span,
-//    pub optimization: bool
+    pub typeval: Option<ExpTypeVal>,
 }
 
 pub enum Exp {
@@ -81,8 +132,8 @@ pub enum Type {
     Int,
     Bool,
     Str,
-    Void,
-    Invalid,
+    Void, // meh
+    Invalid
 }
 
 #[derive(Clone,Copy,PartialEq)]
@@ -108,7 +159,7 @@ impl TypeSpecifier {
 
 impl ExpNode {
     pub fn new(l: usize, r: usize, exp: Exp) -> Box<ExpNode> {
-        Box::new(ExpNode { exp, ttype: None, span: Span(l, r) })
+        Box::new(ExpNode { exp, typeval: None, span: Span(l, r) })
     }
 
     pub fn new_un(l: usize, r: usize, op: UnaryOp, exp: Box<ExpNode>) -> Box<ExpNode> {
@@ -123,13 +174,6 @@ impl ExpNode {
 impl StmtNode {
     pub fn new(l: usize, r: usize, stmt: Stmt) -> Box<StmtNode> {
         Box::new(StmtNode {span: Span(l, r), stmt, ret: None})
-    }
-}
-
-pub fn is_valid(ttype: &Option<Type>) -> bool {
-    match ttype {
-        Some(t) if t != &Type::Invalid => true,
-        _ => false
     }
 }
 
@@ -203,6 +247,17 @@ impl Type {
         }
     }
 }
+
+//impl Display for ExpTypeVal {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//        match self {
+//            ExpTypeVal::Int(_) => write!(f, "int"),
+//            ExpTypeVal::Bool(_) => write!(f, "boolean"),
+//            ExpTypeVal::Str(_) => write!(f, "string"),
+//            _ => write!(f, "<invalid>")
+//        }
+//    }
+//}
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
