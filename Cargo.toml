@@ -14,3 +14,4 @@ regex = "1"
 codespan-reporting = "0.6.0"
 codespan = "0.6.0"
 termcolor = "1.0.5"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm3-7" }

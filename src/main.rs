@@ -1,7 +1,7 @@
-
 pub mod ast;
 pub mod diag;
 pub mod frontend;
+pub mod backend;
 
 #[macro_use] extern crate lalrpop_util;
 lalrpop_mod!(pub latte);
@@ -27,7 +27,7 @@ impl File {
     pub fn get_content(&self) -> &str { self.file_db.source(self.file_id) }
 }
 
-fn compile(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
+fn process(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
     let stripped = frontend::remove_comments(file.get_content());
 
     let mut ast = match latte::GProgramParser::new().parse(&stripped) {
@@ -39,6 +39,8 @@ fn compile(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
     if !diags.is_empty() {
         return Err(diags);
     }
+
+//    let llvm_ir = backend::compile_program(&ast);
 
     return Ok(())
 }
@@ -57,7 +59,7 @@ fn main() {
     let file = File::new(path)
         .unwrap_or_else(|e| die(&format!("error while reading file: {}", e)));
 
-    match compile(&file) {
+    match process(&file) {
         Err(diags) => {
             eprintln!("ERROR\n");
             diag::print_all(&diags, &file);
@@ -75,7 +77,7 @@ fn test_case(path: &str, expect_success: bool) -> bool {
     eprint!("{} => ", path);
     let success: bool;
     let file = File::new(path).unwrap();
-    let result = compile(&file);
+    let result = process(&file);
     match result {
         Err(_) => success = !expect_success,
         Ok(_) => success = expect_success,

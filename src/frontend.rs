@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::diag;
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 pub fn remove_comments(text: &str) -> String {
     #[derive(Debug)]
@@ -182,7 +183,7 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
             if inner_tv.has_valid_type() && !typeval.has_valid_type() {
                 diags.push(diag::Diagnostic{
                     message: format!("invalid use of operand {}", op),
-                    details: Some((inner.span, format!("type mismatch: {} {}", op, inner_tv.to_type())))
+                    details: Some((inner.span, format!("type mismatch: {} {}", op, &inner_tv)))
                 });
             }
             Some(typeval)
@@ -196,7 +197,7 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
             if ltv.has_valid_type() && rtv.has_valid_type() && !typeval.has_valid_type() {
                 diags.push(diag::Diagnostic{
                     message: format!("invalid use of operand {}", op),
-                    details: Some((exp_node.span, format!("type mismatch: {} {} {}", ltv.to_type(), op, rtv.to_type())))
+                    details: Some((exp_node.span, format!("type mismatch: {} {} {}", &ltv, op, &rtv)))
                 });
             }
             Some(typeval)
@@ -214,11 +215,14 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
                     let mut arg_types = Vec::new();
                     for exp_node in args {
                         verify_exp(exp_node, fenv, env, diags);
-                        arg_types.push(exp_node.typeval.as_ref().unwrap().to_type());
+                        arg_types.push(exp_node.typeval.as_ref().unwrap());
                     }
 
+                    let arg_types: Vec<Result<Type, ()>> = arg_types.into_iter().map(<&ExpTypeVal as TryInto<Type>>::try_into).collect();
+                    let arg_types: Result<Vec<Type>, ()> = arg_types.into_iter().collect();
+
                     // if any of arguments has invalid type, it was already reported
-                    if arg_types.iter().all(Type::is_valid) {
+                    if let Ok(arg_types) = arg_types {
                         // all arguments has valid type, check if it matches with the signature
                         if param_types.ne(&arg_types) {
                             diags.push(diag::Diagnostic {
@@ -255,8 +259,8 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
         if let Some(init_exp_node) = &mut var.init {
             verify_exp(init_exp_node, fenv, env, diags);
             let etv = init_exp_node.typeval.as_ref().unwrap();
-            if etv.to_type() != decls.type_spec.ttype {
-                diags.push(diag::gen_invalid_expression_type(&decls.type_spec.ttype, &etv.to_type(), init_exp_node.span));
+            if !etv.has_type(&decls.type_spec.ttype) {
+                diags.push(diag::gen_invalid_expression_type(&decls.type_spec.ttype, &etv, init_exp_node.span));
             }
         }
 
@@ -294,8 +298,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                 },
                 Some(var_type) => {
                     let etv = exp_node.typeval.as_ref().unwrap();
-                    if etv.has_valid_type() && &etv.to_type() != var_type {
-                        diags.push(diag::gen_invalid_expression_type(var_type, &etv.to_type(), exp_node.span));
+                    if etv.has_valid_type() && !etv.has_type(var_type) {
+                        diags.push(diag::gen_invalid_expression_type(var_type, &etv, exp_node.span));
                     }
                 }
             };
@@ -306,7 +310,7 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                 None => diags.push(diag::gen_undeclared_variable_in_stmt(ident, stmt_node.span)),
                 Some(vtype) => {
                     if *vtype != Type::Int {
-                        diags.push(diag::gen_invalid_expression_type(&Type::Int, vtype, stmt_node.span));
+                        diags.push(diag::gen_invalid_expression_type(&Type::Int, &ExpTypeVal::from_type(vtype), stmt_node.span));
                     }
                 }
             };
@@ -315,10 +319,10 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
         Stmt::Ret(exp) => {
             verify_exp(exp, fenv, env, diags);
             let etv = exp.typeval.as_ref().unwrap();
-            if &etv.to_type() != fn_type {
+            if !etv.has_type(fn_type) {
                 diags.push(diag::Diagnostic {
                     message: format!("invalid return type"),
-                    details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, etv.to_type())))
+                    details: Some((stmt_node.span, format!("expected {}, found {}", fn_type, &etv)))
                 })
             };
             Some(true)
@@ -351,7 +355,7 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                     }
                 }
                 _ => {
-                    diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv.to_type(), cond.span));
+                    diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv, cond.span));
                     Some(false)
                 }
             }
@@ -361,8 +365,8 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
             verify_stmt(body, fn_type, fenv, env, diags);
 
             let ctv = cond.typeval.as_ref().unwrap();
-            if ctv.to_type() != Type::Bool {
-                diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv.to_type(), cond.span));
+            if !ctv.has_type(&Type::Bool) {
+                diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv, cond.span));
             }
 
             Some(false)

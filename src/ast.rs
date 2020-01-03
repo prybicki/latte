@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter, Error, Debug};
+use std::convert::TryInto;
 
 pub struct Program {
     pub span: Span,
@@ -39,6 +40,20 @@ pub enum ExpTypeVal {
     Invalid,
 }
 
+impl TryInto<Type> for &ExpTypeVal {
+    type Error = ();
+
+    fn try_into(self) -> Result<Type, Self::Error> {
+        match self {
+            ExpTypeVal::Invalid => Err(()),
+            ExpTypeVal::Void => Ok(Type::Void),
+            ExpTypeVal::Int(_) => Ok(Type::Int),
+            ExpTypeVal::Bool(_) => Ok(Type::Bool),
+            ExpTypeVal::Str(_) => Ok(Type::Str),
+        }
+    }
+}
+
 impl ExpTypeVal {
     pub fn from_type(ttype: &Type) -> ExpTypeVal {
         match ttype {
@@ -46,38 +61,22 @@ impl ExpTypeVal {
             Type::Bool    => ExpTypeVal::Bool(None),
             Type::Str     => ExpTypeVal::Str(None),
             Type::Void    => ExpTypeVal::Void,
-            Type::Invalid => ExpTypeVal::Invalid,
         }
     }
 
-//    pub fn has_type(&self, ttype: &Type) -> bool {
-//        match (self, ttype) {
-//            (ExpTypeVal::Int(_), &Type::Int) => true,
-//            (ExpTypeVal::Bool(_), &Type::Bool) => true,
-//            (ExpTypeVal::Str(_), &Type::Str) => true,
-//            _ => false
-//        }
-//    }
-
-    pub fn to_type(&self) -> Type {
-        match self {
-            ExpTypeVal::Int(_) => Type::Int,
-            ExpTypeVal::Bool(_) => Type::Bool,
-            ExpTypeVal::Str(_) => Type::Str,
-            ExpTypeVal::Void => Type::Void,
-            ExpTypeVal::Invalid => Type::Invalid,
+    pub fn has_type(&self, ttype: &Type) -> bool {
+        match (self, ttype) {
+            (ExpTypeVal::Int(_), &Type::Int) => true,
+            (ExpTypeVal::Bool(_), &Type::Bool) => true,
+            (ExpTypeVal::Str(_), &Type::Str) => true,
+            (ExpTypeVal::Void, &Type::Void) => true,
+            _ => false,
         }
     }
 
     pub fn has_valid_type(&self) -> bool {
-        self.to_type().is_valid()
-    }
-}
-
-impl Type {
-    pub fn is_valid(&self) -> bool {
         match self {
-            Type::Invalid => false,
+            ExpTypeVal::Invalid => false,
             _ => true
         }
     }
@@ -133,7 +132,6 @@ pub enum Type {
     Bool,
     Str,
     Void, // meh
-    Invalid
 }
 
 #[derive(Clone,Copy,PartialEq)]
@@ -243,21 +241,21 @@ impl Type {
             Type::Bool => write!(f, "boolean"),
             Type::Str => write!(f, "string"),
             Type::Void => write!(f, "void"),
-            Type::Invalid => write!(f, "<invalid>")
         }
     }
 }
 
-//impl Display for ExpTypeVal {
-//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-//        match self {
-//            ExpTypeVal::Int(_) => write!(f, "int"),
-//            ExpTypeVal::Bool(_) => write!(f, "boolean"),
-//            ExpTypeVal::Str(_) => write!(f, "string"),
-//            _ => write!(f, "<invalid>")
-//        }
-//    }
-//}
+impl Display for ExpTypeVal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            ExpTypeVal::Int(_) => write!(f, "int"),
+            ExpTypeVal::Bool(_) => write!(f, "boolean"),
+            ExpTypeVal::Str(_) => write!(f, "string"),
+            ExpTypeVal::Void => write!(f, "void"),
+            ExpTypeVal::Invalid => write!(f, "<invalid>"),
+        }
+    }
+}
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
