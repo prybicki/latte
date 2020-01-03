@@ -40,7 +40,7 @@ fn process(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
         return Err(diags);
     }
 
-//    let llvm_ir = backend::compile_program(&ast);
+    let llvm_ir = backend::compile(&ast);
 
     return Ok(())
 }
