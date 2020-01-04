@@ -1,5 +1,5 @@
-; ModuleID = 'simplest'
-source_filename = "simplest"
+; ModuleID = 'runtime.c'
+source_filename = "runtime.c"
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
@@ -8,19 +8,6 @@ target triple = "x86_64-pc-linux-gnu"
 @.str.2 = private unnamed_addr constant [15 x i8] c"runtime error\0A\00", align 1
 @.str.3 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
 @.str.4 = private unnamed_addr constant [7 x i8] c"%1023s\00", align 1
-
-define void @some_complex_fun(i32, i1) {
-entry:
-  call void @printInt(i32 42)
-  call void @printInt(i32 %0)
-  ret void
-}
-
-define i32 @main() {
-entry:
-  call void @printInt(i32 13)
-  ret i32 0
-}
 
 ; Function Attrs: noinline nounwind optnone uwtable
 define void @printInt(i32) #0 {
@@ -159,8 +146,8 @@ attributes #5 = { noreturn }
 attributes #6 = { nounwind readonly }
 attributes #7 = { nounwind }
 
-!llvm.ident = !{!0}
-!llvm.module.flags = !{!1}
+!llvm.module.flags = !{!0}
+!llvm.ident = !{!1}
 
-!0 = !{!"clang version 6.0.0-1ubuntu2 (tags/RELEASE_600/final)"}
-!1 = !{i32 1, !"wchar_size", i32 4}
+!0 = !{i32 1, !"wchar_size", i32 4}
+!1 = !{!"clang version 6.0.0-1ubuntu2 (tags/RELEASE_600/final)"}

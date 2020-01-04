@@ -1,13 +1,13 @@
-int f(int i) {
-    return 42;
-}
-
-int g() {
-    return 32;
+void some_complex_fun(int a, boolean b)
+{
+    printInt(42);
+    printInt(a);
+    return;
 }
 
 int main()
 {
-    return f(g());
+    printInt(9+ 8 * 7 / 6 % 5);
+    return 0;
 }
 

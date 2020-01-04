@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Error, Debug};
+use std::fmt::{Display, Formatter, Error};
 use std::convert::TryInto;
 
 #[derive(Debug)]
@@ -120,7 +120,7 @@ pub enum Stmt {
     Ass(Ident, Box<ExpNode>),
     Incr(Ident),
     Decr(Ident),
-    Ret(Box<ExpNode>),
+    Ret(Box<ExpNode>), // TODO Use Option here
     VRet,
     Cond(Box<ExpNode>, Box<StmtNode>, Option<Box<StmtNode>>),
     While(Box<ExpNode>, Box<StmtNode>),
@@ -131,7 +131,7 @@ pub enum Stmt {
 
 pub type Ident = String;
 
-type FnSignature = (Type, Vec<Type>);
+pub type FnSignature = (Type, Vec<Type>);
 
 #[derive(Debug,Clone,Copy)]
 pub struct Span(pub usize, pub usize);

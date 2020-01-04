@@ -2,6 +2,7 @@ pub mod ast;
 pub mod diag;
 pub mod frontend;
 pub mod backend;
+pub mod scoped_map;
 
 #[macro_use] extern crate lalrpop_util;
 lalrpop_mod!(pub latte);
@@ -35,14 +36,14 @@ fn process(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
         Ok(v) => v
     };
 
-    println!("{:?}", ast);
+//    println!("{:?}", ast);
 
     let diags = frontend::verify_program(&mut ast);
     if !diags.is_empty() {
         return Err(diags);
     }
 
-    let llvm_ir = backend::compile(&ast);
+    backend::compile(&ast);
 
     return Ok(())
 }

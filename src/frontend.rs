@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::diag;
+use crate::scoped_map::ScopedMap;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -75,44 +76,6 @@ pub fn remove_comments(text: &str) -> String {
 // TODO:
 // no return (especially dead return: if(false) return) / return only in some cases
 
-struct ScopedMap<K,V> {
-    scopes: Vec<HashMap<K,V>>,
-}
-
-impl<K,V> ScopedMap<K,V>
-    where K: std::cmp::Eq + std::hash::Hash
-{
-    fn new() -> ScopedMap<K,V> {
-        ScopedMap {scopes: Vec::new()}
-    }
-
-    fn push_scope(&mut self) {
-        self.scopes.push(HashMap::<K, V>::new())
-    }
-
-    fn pop_scope(&mut self) -> Option<HashMap<K,V>> {
-        self.scopes.pop()
-    }
-
-    fn get(&self, key: &K) -> Option<&V> {
-        for scope in self.scopes.iter().rev() {
-            let x = scope.get(key);
-            if x.is_some() {
-                return x
-            }
-        }
-        return None
-    }
-
-    fn insert(&mut self, key: K, val: V) -> Option<V> {
-        if self.scopes.last().is_none() {
-            self.push_scope();
-        }
-        let top_scope = self.scopes.last_mut().unwrap();
-        return top_scope.insert(key, val);
-    }
-}
-
 type Env<'a> = ScopedMap<Ident, Type>;
 type FEnv<'a> = HashMap<Ident, (Type, Vec<Type>)>;
 type Diags = Vec<diag::Diagnostic>;
@@ -134,10 +97,10 @@ fn get_binary_op_typeval(op: &BinaryOp, ltypeval: &ExpTypeVal, rtypeval: &ExpTyp
     match (op, ltypeval, rtypeval) {
         (BinaryOp::Eq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
         (BinaryOp::Eq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
-        (BinaryOp::Eq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
+//        (BinaryOp::Eq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
         (BinaryOp::Neq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
         (BinaryOp::Neq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
-        (BinaryOp::Neq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
+//        (BinaryOp::Neq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
         (BinaryOp::Or,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l || *r)),
         (BinaryOp::And, ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l && *r)),
 
@@ -264,7 +227,7 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
             }
         }
 
-        // add variable disregarding init exp type match
+        // add variable disregarding init exp type mismatch
         match env.insert(var.ident.clone(), decls.type_spec.ttype) {
             Some(_) => diags.push(diag::gen_multiple_var_decl(&var.ident, var.span)),
             None => ()
