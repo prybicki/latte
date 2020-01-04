@@ -90,9 +90,11 @@ pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
         ParseError::ExtraToken{token: (b, latte::Token(_, token_str), e)} => {
             ((b, e), format!("unexpected additional token: {}", token_str))
         },
-        _ => panic!("undefined parser error")
+        ParseError::User{error} => ((0, 0), format!("{}", error)),
     };
-
+    if (b, e) == (0, 0) {
+        return Diagnostic {message: comment, details: None}
+    }
     Diagnostic {message: "syntax error".to_owned(), details: Some((ast::Span(b, e) , comment))}
 }
 

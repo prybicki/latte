@@ -6,6 +6,12 @@
 void printInt(int val) {
     printf("%d", val);
 }
+
+void test()
+{
+	printInt(42);
+}
+
 //
 //void printString(char* str) {
 //    printf("%s", str);

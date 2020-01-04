@@ -35,6 +35,8 @@ fn process(file: &File) -> Result<(), Vec<diag::Diagnostic>> {
         Ok(v) => v
     };
 
+    println!("{:?}", ast);
+
     let diags = frontend::verify_program(&mut ast);
     if !diags.is_empty() {
         return Err(diags);

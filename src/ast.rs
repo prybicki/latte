@@ -1,11 +1,13 @@
 use std::fmt::{Display, Formatter, Error, Debug};
 use std::convert::TryInto;
 
+#[derive(Debug)]
 pub struct Program {
     pub span: Span,
     pub functions:  Vec<FnDef>,
 }
 
+#[derive(Debug)]
 pub struct FnDef {
     pub span: Span,
     pub type_spec: TypeSpecifier,
@@ -14,11 +16,13 @@ pub struct FnDef {
     pub body: Box<StmtNode>,
 }
 
+#[derive(Debug)]
 pub struct TypeSpecifier {
     pub span: Span,
     pub ttype: Type,
 }
 
+#[derive(Debug)]
 pub struct VarDecl {
     pub span: Span,
     pub type_spec: TypeSpecifier,
@@ -26,12 +30,14 @@ pub struct VarDecl {
 }
 
 // Helper struct for parsing, not a part of the ast.
+#[derive(Debug)]
 pub struct DeclBody {
     pub span: Span,
     pub ident: Ident,
     pub init: Option<Box<ExpNode>>
 }
 
+#[derive(Debug)]
 pub enum ExpTypeVal {
     Int(Option<i32>),
     Bool(Option<bool>),
@@ -82,12 +88,14 @@ impl ExpTypeVal {
     }
 }
 
+#[derive(Debug)]
 pub struct ExpNode {
     pub exp: Exp,
     pub span: Span,
     pub typeval: Option<ExpTypeVal>,
 }
 
+#[derive(Debug)]
 pub enum Exp {
     Unary(UnaryOp, Box<ExpNode>),
     Binary(Box<ExpNode>, BinaryOp, Box<ExpNode>),
@@ -98,12 +106,14 @@ pub enum Exp {
     Var(Ident),
 }
 
+#[derive(Debug)]
 pub struct StmtNode {
     pub span: Span,
     pub stmt: Stmt,
     pub ret: Option<bool> // always returns
 }
 
+#[derive(Debug)]
 pub enum Stmt {
     BStmt(Vec<Box<StmtNode>>),
     Decl(VarDecl),
@@ -123,10 +133,10 @@ pub type Ident = String;
 
 type FnSignature = (Type, Vec<Type>);
 
-#[derive(Clone,Copy)]
+#[derive(Debug,Clone,Copy)]
 pub struct Span(pub usize, pub usize);
 
-#[derive(Clone,Copy,PartialEq)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Type {
     Int,
     Bool,
@@ -134,13 +144,13 @@ pub enum Type {
     Void, // meh
 }
 
-#[derive(Clone,Copy,PartialEq)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum UnaryOp {
     Neg,
     Not
 }
 
-#[derive(Clone,Copy,PartialEq)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum BinaryOp {
     Or, And,
     Eq, Neq, Gt, Gte, Lt, Lte,
@@ -212,38 +222,31 @@ impl Display for BinaryOp {
     }
 }
 
-impl Display for Exp {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        match self {
-            Exp::Unary(op, e) => write!(f, "{}{}", op, e),
-            Exp::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
-            Exp::Call(ident, args) => {
-                let mut args_text = String::new();
-                for arg in args.iter() {
-                    args_text.push_str(&(**arg).to_string());
-                    args_text.push_str(", ");
-                }
-                let args_text = &args_text[0..args_text.len()-2];
-                write!(f, "{}({})", ident, args_text)
-            }
-            Exp::Int(v) => write!(f, "{}", v),
-            Exp::Bool(v) => write!(f, "b{}", v),
-            Exp::Str(v) => write!(f, "{}", v),
-            Exp::Var(v) => write!(f, "{}", v),
-        }
-    }
-}
+//impl Display for Exp {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//        match self {
+//            Exp::Unary(op, e) => write!(f, "{}{}", op, e),
+//            Exp::Binary(l, op, r) => write!(f, "({} {} {})", l, op, r),
+//            Exp::Call(ident, args) => {
+//                let mut args_text = String::new();
+//                for arg in args.iter() {
+//                    args_text.push_str(&(**arg).to_string());
+//                    args_text.push_str(", ");
+//                }
+//                let args_text = &args_text[0..args_text.len()-2];
+//                write!(f, "{}({})", ident, args_text)
+//            }
+//            Exp::Int(v) => write!(f, "{}", v),
+//            Exp::Bool(v) => write!(f, "b{}", v),
+//            Exp::Str(v) => write!(f, "{}", v),
+//            Exp::Var(v) => write!(f, "{}", v),
+//        }
+//    }
+//}
 
-impl Type {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        match self {
-            Type::Int => write!(f, "int"),
-            Type::Bool => write!(f, "boolean"),
-            Type::Str => write!(f, "string"),
-            Type::Void => write!(f, "void"),
-        }
-    }
-}
+//impl Type {
+//
+//}
 
 impl Display for ExpTypeVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -259,18 +262,28 @@ impl Display for ExpTypeVal {
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        self.fmt(f)
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::Bool => write!(f, "boolean"),
+            Type::Str => write!(f, "string"),
+            Type::Void => write!(f, "void"),
+        }
     }
 }
 
-impl Debug for Type {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        self.fmt(f)
-    }
-}
+//impl Debug for Type {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//        self.fmt(f)
+//    }
+//}
 
-impl Display for ExpNode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        return self.exp.fmt(f);
-    }
-}
+//impl Display for ExpNode {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//        match self.node {
+//            ExpTypeVal::Int => write!(f, "int"),
+//            ExpTypeVal::Bool => write!(f, "boolean"),
+//            ExpTypeVal::Str => write!(f, "string"),
+//            ExpTypeVal::Void => write!(f, "void"),
+//        }
+//    }
+//}
