@@ -11,9 +11,11 @@ use inkwell::memory_buffer::MemoryBuffer;
 use std::path::Path;
 use std::fs;
 use crate::scoped_map::ScopedMap;
+use inkwell::basic_block::BasicBlock;
 
-type FEnv<'llvm> = ScopedMap<Ident, FunctionValue<'llvm>>;
-type VEnv<'llvm> = HashMap<Ident, BasicValueEnum<'llvm>>;
+type FEnv<'llvm> = HashMap<Ident, FunctionValue<'llvm>>;
+type VEnv<'llvm> = ScopedMap<Ident, BasicValueEnum<'llvm>>; // value env
+type TEnv<'llvm> = ScopedMap<Ident, Type>; // type env
 
 struct Backend<'llvm> {
     llvm: &'llvm Context,
@@ -21,6 +23,25 @@ struct Backend<'llvm> {
     bd: Builder<'llvm>,
     fenv: FEnv<'llvm>,
     venv: VEnv<'llvm>,
+    tenv: TEnv<'llvm>,
+    curr_fn: Option<FunctionValue<'llvm>>,
+}
+
+trait HasSetName {
+    fn set_name(&self, s: &str);
+}
+
+impl<'llvm> HasSetName for BasicValueEnum<'llvm> {
+    fn set_name(&self, s: &str) {
+        match self {
+            BasicValueEnum::ArrayValue(v) => v.set_name(s),
+            BasicValueEnum::IntValue(v) => v.set_name(s),
+            BasicValueEnum::FloatValue(v) => v.set_name(s),
+            BasicValueEnum::PointerValue(v) => v.set_name(s),
+            BasicValueEnum::StructValue(v) => v.set_name(s),
+            BasicValueEnum::VectorValue(v) => v.set_name(s),
+        }
+    }
 }
 
 impl<'llvm> Backend<'llvm> {
@@ -29,7 +50,8 @@ impl<'llvm> Backend<'llvm> {
         let bd = llvm.create_builder();
         let fenv = FEnv::new();
         let venv = VEnv::new();
-        Backend {llvm, md, bd, fenv, venv}
+        let tenv = TEnv::new();
+        Backend {llvm, md, bd, fenv, venv, tenv, curr_fn: None}
     }
 
     fn get_llvm_basic_type(&self, ttype: &Type) -> Option<BasicTypeEnum<'llvm>> {
@@ -137,36 +159,39 @@ impl<'llvm> Backend<'llvm> {
     fn compile_stmt(&mut self, node: &StmtNode) {
         match &node.stmt {
             Stmt::BStmt(stmts) => {
+                self.venv.push_scope();
                 for stmt in stmts {
                     self.compile_stmt(stmt);
                 }
+                self.venv.pop_scope();
             }
             Stmt::Decl(decl) => {
-//                let ttype = self.get_llvm_basic_type(&decl.type_spec.ttype).unwrap();
                 for body in &decl.vars {
                     let init_val = match &body.init {
                         Some(exp) => self.compile_exp(exp).unwrap(),
                         None => self.get_llvm_default_value(&decl.type_spec.ttype).unwrap()
                     };
-                    self.venv.insert(body.ident.clone(), init_val);
+                    init_val.set_name(&body.ident);
+                    self.tenv.insert_into_top_scope(body.ident.clone(), decl.type_spec.ttype);
+                    self.venv.insert_into_top_scope(body.ident.clone(), init_val);
                 }
             }
             Stmt::Ass(ident, exp) => {
                 let val = self.compile_exp(exp).unwrap();
-                self.venv.insert(ident.clone(), val).unwrap();
-
+                val.set_name(ident);
+                self.venv.replace_topmost(ident.clone(), val);
             }
             Stmt::Incr(ident) => {
                 let var = self.venv.get(ident).unwrap().into_int_value();
                 let one = self.llvm.i32_type().const_int(1, false);
                 let val = self.bd.build_int_add(var, one, "").into();
-                self.venv.insert(ident.clone(), val);
+                self.venv.replace_topmost(ident.clone(), val);
             }
             Stmt::Decr(ident) => {
                 let var = self.venv.get(ident).unwrap().into_int_value();
                 let one = self.llvm.i32_type().const_int(1, false);
                 let val = self.bd.build_int_sub(var, one, "").into();
-                self.venv.insert(ident.clone(), val);
+                self.venv.replace_topmost(ident.clone(), val);
             }
             Stmt::EStmt(exp_node) => {
                 self.compile_exp(exp_node);
@@ -177,17 +202,133 @@ impl<'llvm> Backend<'llvm> {
             Stmt::VRet => {
                 self.bd.build_return(None);
             }
+            Stmt::Cond(cond, tstmt, fstmt) => {
+                let fnval = self.curr_fn.unwrap();
+
+                // TODO make it lazy
+
+                let tstmt_returns = tstmt.ret.unwrap();
+                let fstmt_returns = if let Some(fstmt) = fstmt { fstmt.ret.unwrap() } else { false };
+                let non_returning_blocks = !tstmt_returns as i32 + !fstmt_returns as i32;
+
+                // create basic block for all statements, they may end up being empty
+                let cond = self.compile_exp(cond).unwrap().into_int_value();
+
+                let pred_block = self.bd.get_insert_block().unwrap();
+                let then_block = self.llvm.append_basic_block(fnval, "then");
+                let cont_block = self.llvm.append_basic_block(fnval, "cont");
+                let else_block = self.llvm.append_basic_block(fnval, "else");
+
+                // remember values before branching
+                let pred_venv = self.venv.clone();
+
+                // branch
+                self.bd.build_conditional_branch(
+                    cond,
+                    &then_block,
+                    if fstmt.is_none() { &cont_block } else { &else_block }
+                );
+
+                // build true-statement block
+                self.bd.position_at_end(&then_block);
+                self.compile_stmt(tstmt);
+                // if true-statement does not return, jump to continuation block
+                if !tstmt.ret.unwrap() {
+                    self.bd.build_unconditional_branch(&cont_block);
+                }
+                // expect to know the same set of variables after compiling true statment, possibly with different values
+                assert!(self.venv.keys().eq(pred_venv.keys()));
+
+                // remember variables after true-statement and after optional false-statement
+                let then_venv = self.venv.clone();
+                let mut else_venv = None; // just a placeholder here
+
+                // build false-statement block
+                if let Some(fstmt) = fstmt {
+                    // roll back variables as if it was before jump
+                    self.venv.clone_from(&pred_venv);
+                    self.bd.position_at_end(&else_block);
+                    self.compile_stmt(fstmt);
+                    // if false-statment does not return, jump to continuation block
+                    if !fstmt.ret.unwrap() {
+                        self.bd.build_unconditional_branch(&cont_block);
+                    }
+                    // expect to know the same set of variables after compiling true statment, possibly with different values
+                    assert!(self.venv.keys().eq(pred_venv.keys()));
+                    // remember variables
+                    else_venv = Some(self.venv.clone());
+                }
+
+//                self.venv.clone_from(&pred_venv); // TODO: is this necessary?? raczej nope
+
+//                println!("{}", non_returning_blocks);
+
+                // cont block is necessary
+                if non_returning_blocks > 0 {
+                    self.bd.position_at_end(&cont_block);
+
+                    for var in pred_venv.keys() {
+                        let mut entries: Vec<(&dyn BasicValue, &BasicBlock)> = Vec::new();
+                        // TODO simplify it?
+
+                        // one of the block does not return, so must be one of the predecessors
+                        if fstmt.is_none() {
+                            let pred_val = pred_venv.get(var).unwrap();
+                            entries.push((pred_val, &pred_block));
+                        }
+
+                        // true-statement precedes if it does not return
+                        if !tstmt_returns { // tstmt does not return
+                            let then_val = then_venv.get(var).unwrap();
+                            entries.push((then_val, &then_block));
+                        }
+                        // false-statment precedes if it exists and does not return
+                        if fstmt.is_some() && !fstmt_returns { // fstmt exists and does not return
+                            let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
+                            entries.push((else_val, &else_block));
+                        }
+
+                        assert_ne!(entries.len(), 0);
+                        if entries.len() == 1 {
+                            let val = entries.first().unwrap().0;
+                            self.venv.replace_topmost(var.clone(), val.as_basic_value_enum());
+                        }
+                        else {
+                            let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
+                            let phi = self.bd.build_phi(ttype, var);
+                            phi.add_incoming(entries.as_slice());
+                            self.venv.replace_topmost(var.clone(), phi.as_basic_value());
+                        }
+                    }
+                }
+
+                // remove empty blocks
+                for block in [then_block, else_block].iter() {
+                    if block.get_last_instruction().is_none() {
+                        block.remove_from_function();
+                    }
+                }
+5
+                if non_returning_blocks == 0 {
+                    cont_block.remove_from_function();
+                }
+            }
+            Stmt::While(cond, body) => {
+                unimplemented!();
+            }
         }
     }
 
     fn compile_fndef(&mut self, fndef: &FnDef) {
         let fnval = *self.fenv.get(&fndef.ident).unwrap();
+        self.curr_fn = Some(fnval);
         let entry = self.llvm.append_basic_block(fnval, "entry");
         self.venv = VEnv::new();
         for (i, param) in fndef.params.iter().enumerate() {
             let name = &param.vars.first().unwrap().ident;
             let val = fnval.get_nth_param(i as u32).unwrap();
-            self.venv.insert(name.clone(), val);
+            self.venv.insert_into_top_scope(name.clone(), val);
+            self.tenv.insert_into_top_scope(name.clone(), param.type_spec.ttype);
         }
         self.bd.position_at_end(&entry);
         self.compile_stmt(&fndef.body);
@@ -228,6 +369,8 @@ pub fn compile(prog: &Program) -> () {
     let rt_mod = backend.llvm.create_module_from_ir(rt_buffer).unwrap();
     backend.md.link_in_module(rt_mod).unwrap();
     backend.md.print_to_file("simplest.ll").unwrap();
+    if let Err(e) = backend.md.verify() {
+        println!("{}", e.to_string());
+    }
     backend.md.write_bitcode_to_file(&fs::File::create("simplest.bc").unwrap(), true, false);
-    println!("{}", backend.md.print_to_string().to_string());
 }

@@ -228,7 +228,7 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
         }
 
         // add variable disregarding init exp type mismatch
-        match env.insert(var.ident.clone(), decls.type_spec.ttype) {
+        match env.insert_into_top_scope(var.ident.clone(), decls.type_spec.ttype) {
             Some(_) => diags.push(diag::gen_multiple_var_decl(&var.ident, var.span)),
             None => ()
         }

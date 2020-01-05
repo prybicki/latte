@@ -33,7 +33,7 @@ char* readString() {
     return strcpy(result, buffer);
 }
 
-char* latte_concatenate_strings(char* a, char* b)
+char* __latc_concat_str(char* a, char* b)
 {
     int len_a = strlen(a);
     int len_b = strlen(b);
@@ -41,4 +41,9 @@ char* latte_concatenate_strings(char* a, char* b)
     char* result = malloc(len_ab);
     strcpy(result, a);
     return strcpy(result + len_a, b);
+}
+
+int __latc_str_eq(char* a, char* b)
+{
+    return !strcmp(a, b);
 }
