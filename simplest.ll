@@ -38,7 +38,7 @@ else:                                             ; preds = %entry
   ret i32 %mul
 }
 
-define i32 @main() {
+define i32 @main2() {
 entry:
   %0 = call i32 @fact1(i32 5)
   call void @printInt(i32 %0)
@@ -60,6 +60,25 @@ cont:                                             ; preds = %else, %then
 else:                                             ; preds = %entry
   call void @printInt(i32 1)
   br label %cont
+}
+
+define i32 @main() {
+entry:
+  br label %loop_cond
+
+loop_cond:                                        ; preds = %loop_body, %entry
+  %a = phi i32 [ 5, %entry ], [ %0, %loop_body ]
+  %lt = icmp slt i32 %a, 10
+  br i1 %lt, label %loop_body, label %loop_cont
+
+loop_body:                                        ; preds = %loop_cond
+  %0 = add i32 %a, 1
+  call void @printInt(i32 %0)
+  br label %loop_cond
+
+loop_cont:                                        ; preds = %loop_cond
+  call void @printInt(i32 %a)
+  ret i32 %a
 }
 
 ; Function Attrs: nounwind uwtable

@@ -17,6 +17,8 @@ type FEnv<'llvm> = HashMap<Ident, FunctionValue<'llvm>>;
 type VEnv<'llvm> = ScopedMap<Ident, BasicValueEnum<'llvm>>; // value env
 type TEnv<'llvm> = ScopedMap<Ident, Type>; // type env
 
+// TODO: Backend is quietly assuming that condition expressions have no side effects (other than printing)
+
 struct Backend<'llvm> {
     llvm: &'llvm Context,
     md: Module<'llvm>,
@@ -245,7 +247,7 @@ impl<'llvm> Backend<'llvm> {
 
                 // build false-statement block
                 if let Some(fstmt) = fstmt {
-                    // roll back variables as if it was before jump
+                    // roll back variables to cancell effects of compilation of true statement
                     self.venv.clone_from(&pred_venv);
                     self.bd.position_at_end(&else_block);
                     self.compile_stmt(fstmt);
@@ -258,10 +260,6 @@ impl<'llvm> Backend<'llvm> {
                     // remember variables
                     else_venv = Some(self.venv.clone());
                 }
-
-//                self.venv.clone_from(&pred_venv); // TODO: is this necessary?? raczej nope
-
-//                println!("{}", non_returning_blocks);
 
                 // cont block is necessary
                 if non_returning_blocks > 0 {
@@ -301,20 +299,62 @@ impl<'llvm> Backend<'llvm> {
                         }
                     }
                 }
-
-                // remove empty blocks
-                for block in [then_block, else_block].iter() {
-                    if block.get_last_instruction().is_none() {
-                        block.remove_from_function();
-                    }
-                }
-5
-                if non_returning_blocks == 0 {
-                    cont_block.remove_from_function();
-                }
             }
             Stmt::While(cond, body) => {
-                unimplemented!();
+                let fnval = self.curr_fn.unwrap();
+                let pred_block = self.bd.get_insert_block().unwrap();
+                let pred_venv = self.venv.clone();
+
+                // TODO make it lazy
+                let body_returns = body.ret.unwrap();
+                let cond_block = self.llvm.append_basic_block(fnval, "loop_cond");
+                let body_block = self.llvm.append_basic_block(fnval, "loop_body");
+                let cont_block = self.llvm.append_basic_block(fnval, "loop_cont");
+                self.bd.build_unconditional_branch(&cond_block);
+
+                let mut phi_venv = HashMap::<Ident, PhiValue>::new();
+
+                // build condition (preds = pred, body)
+                {
+                    self.bd.position_at_end(&cond_block);
+
+                    if !body_returns {
+                        // build phi placeholders
+                        for var in self.tenv.keys() {
+                            let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
+                            let phi = self.bd.build_phi(ttype, var);
+
+                            // does it work?
+                            phi_venv.insert(var.clone(), phi.clone());
+                            println!("replacing {}", var);
+                            self.venv.replace_topmost(var.clone(), phi.as_basic_value());
+                        }
+                    }
+                    let cond_val = self.compile_exp(cond).unwrap().into_int_value();
+                    self.bd.build_conditional_branch(cond_val, &body_block, &cont_block);
+                }
+                let cond_venv = self.venv.clone();
+
+                // build body
+                {
+                    self.bd.position_at_end(&body_block);
+                    self.compile_stmt(body);
+                    if !body_returns {
+                        self.bd.build_unconditional_branch(&cond_block);
+                    }
+                }
+
+                if !body_returns {
+                    // build actual phi values in cond block
+                    for var in self.tenv.keys() {
+                        let phi = phi_venv.get(var).unwrap();
+                        let pred_val = pred_venv.get(var).unwrap();
+                        let body_val = self.venv.get(var).unwrap();
+                        phi.add_incoming(&[(pred_val, &pred_block), (body_val, &body_block)]);
+                        self.venv.replace_topmost(var.clone(), phi.as_basic_value());
+                    }
+                    self.bd.position_at_end(&cont_block);
+                }
             }
         }
     }
@@ -324,6 +364,7 @@ impl<'llvm> Backend<'llvm> {
         self.curr_fn = Some(fnval);
         let entry = self.llvm.append_basic_block(fnval, "entry");
         self.venv = VEnv::new();
+        self.tenv = TEnv::new();
         for (i, param) in fndef.params.iter().enumerate() {
             let name = &param.vars.first().unwrap().ident;
             let val = fnval.get_nth_param(i as u32).unwrap();
@@ -332,6 +373,25 @@ impl<'llvm> Backend<'llvm> {
         }
         self.bd.position_at_end(&entry);
         self.compile_stmt(&fndef.body);
+        self.remove_empty_basic_blocks();
+    }
+
+    fn remove_empty_basic_blocks(&mut self) {
+        let mut ff = self.md.get_first_function();
+        while let Some(function) = ff {
+
+            let mut bb = function.get_first_basic_block();
+            while let Some(basic_block) = bb {
+                if let None = basic_block.get_first_instruction() {
+                    basic_block.remove_from_function();
+                    println!("removed {:?} / {:?}", function, basic_block);
+                }
+
+                bb = basic_block.get_next_basic_block();
+            }
+
+            ff = function.get_next_function();
+        }
     }
 
     fn compile_fndecl(&mut self, ident: &Ident, signature: &FnSignature){
@@ -370,7 +430,7 @@ pub fn compile(prog: &Program) -> () {
     backend.md.link_in_module(rt_mod).unwrap();
     backend.md.print_to_file("simplest.ll").unwrap();
     if let Err(e) = backend.md.verify() {
-        println!("{}", e.to_string());
+        println!("Errors:\n{}", e.to_string());
     }
     backend.md.write_bitcode_to_file(&fs::File::create("simplest.bc").unwrap(), true, false);
 }

@@ -16,11 +16,7 @@ int fact2(int n) {
     }
 }
 
-
-// TODO: if ret else ret
-
-int main()
-{
+int main2() {
     printInt(fact1(5));
     printInt(fact2(7));
 
@@ -35,5 +31,18 @@ int main()
     }
     printInt(a);
     return 0;
+}
+
+// TODO: if ret else ret
+
+int main()
+{
+    int a = 5;
+    while(a < 10) {
+        a++;
+        printInt(a);
+    }
+    printInt(a);
+    return a;
 }
 
