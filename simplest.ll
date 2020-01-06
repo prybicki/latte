@@ -8,77 +8,34 @@ target triple = "x86_64-pc-linux-gnu"
 @.str.3 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
 @.str.4 = private unnamed_addr constant [7 x i8] c"%1023s\00", align 1
 
-define i32 @fact1(i32) {
+define i32 @f() {
 entry:
-  %int_eq = icmp eq i32 %0, 1
-  br i1 %int_eq, label %then, label %cont
+  br i1 true, label %then, label %else
 
 then:                                             ; preds = %entry
-  ret i32 1
-
-cont:                                             ; preds = %entry
-  %add = add i32 %0, -1
-  %1 = call i32 @fact1(i32 %add)
-  %mul = mul i32 %1, %0
-  ret i32 %mul
-}
-
-define i32 @fact2(i32) {
-entry:
-  %int_eq = icmp eq i32 %0, 1
-  br i1 %int_eq, label %then, label %else
-
-then:                                             ; preds = %entry
-  ret i32 1
-
-else:                                             ; preds = %entry
-  %add = add i32 %0, -1
-  %1 = call i32 @fact2(i32 %add)
-  %mul = mul i32 %1, %0
-  ret i32 %mul
-}
-
-define i32 @main2() {
-entry:
-  %0 = call i32 @fact1(i32 5)
-  call void @printInt(i32 %0)
-  %1 = call i32 @fact2(i32 7)
-  call void @printInt(i32 %1)
-  %a = call i32 @readInt()
-  %lt = icmp slt i32 %a, 0
-  br i1 %lt, label %then, label %else
-
-then:                                             ; preds = %entry
-  call void @printInt(i32 -1)
-  br label %cont
-
-cont:                                             ; preds = %else, %then
-  %a1 = phi i32 [ -1, %then ], [ 1, %else ]
-  call void @printInt(i32 %a1)
   ret i32 0
 
 else:                                             ; preds = %entry
-  call void @printInt(i32 1)
   br label %cont
 }
 
+define i32 @g() {
+entry:
+  br i1 false, label %then, label %else
+
+then:                                             ; preds = %entry
+  br label %cont
+
+else:                                             ; preds = %entry
+  ret i32 0
+}
+
+declare void @p()
+
 define i32 @main() {
 entry:
-  br label %loop_cond
-
-loop_cond:                                        ; preds = %loop_body, %entry
-  %a = phi i32 [ 5, %entry ], [ %0, %loop_body ]
-  %lt = icmp slt i32 %a, 10
-  br i1 %lt, label %loop_body, label %loop_cont
-
-loop_body:                                        ; preds = %loop_cond
-  %0 = add i32 %a, 1
-  call void @printInt(i32 %0)
-  br label %loop_cond
-
-loop_cont:                                        ; preds = %loop_cond
-  call void @printInt(i32 %a)
-  ret i32 %a
+  call void @p()
+  ret i32 0
 }
 
 ; Function Attrs: nounwind uwtable
@@ -101,7 +58,7 @@ declare i32 @puts(i8* nocapture readonly) local_unnamed_addr #2
 
 ; Function Attrs: noreturn nounwind uwtable
 define void @error() local_unnamed_addr #3 {
-  tail call void (i32, i8*, ...) @errx(i32 1, i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str.2, i64 0, i64 0)) #9
+  tail call void (i32, i8*, ...) @errx(i32 1, i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str.2, i64 0, i64 0)) #7
   unreachable
 }
 
@@ -151,7 +108,7 @@ define i8* @readString() #0 {
   unreachable
 
 ; <label>:6:                                      ; preds = %0
-  %7 = call i64 @strlen(i8* nonnull %2) #10
+  %7 = call i64 @strlen(i8* nonnull %2) #8
   %8 = shl i64 %7, 32
   %9 = add i64 %8, 4294967296
   %10 = ashr exact i64 %9, 32
@@ -171,9 +128,9 @@ declare noalias i8* @malloc(i64) local_unnamed_addr #1
 declare i8* @strcpy(i8*, i8* nocapture readonly) local_unnamed_addr #1
 
 ; Function Attrs: nounwind uwtable
-define i8* @__latc_concat_str(i8* nocapture readonly, i8* nocapture readonly) local_unnamed_addr #0 {
-  %3 = tail call i64 @strlen(i8* %0) #10
-  %4 = tail call i64 @strlen(i8* %1) #10
+define i8* @__latc_concat_str(i8* nocapture readonly, i8* nocapture readonly) #0 {
+  %3 = tail call i64 @strlen(i8* %0) #8
+  %4 = tail call i64 @strlen(i8* %1) #8
   %5 = add i64 %3, 1
   %6 = add i64 %5, %4
   %7 = shl i64 %6, 32
@@ -184,19 +141,8 @@ define i8* @__latc_concat_str(i8* nocapture readonly, i8* nocapture readonly) lo
   %12 = ashr exact i64 %11, 32
   %13 = getelementptr inbounds i8, i8* %9, i64 %12
   %14 = tail call i8* @strcpy(i8* %13, i8* %1) #2
-  ret i8* %14
+  ret i8* %9
 }
-
-; Function Attrs: nounwind readonly uwtable
-define i32 @__latc_str_eq(i8* nocapture readonly, i8* nocapture readonly) local_unnamed_addr #7 {
-  %3 = tail call i32 @strcmp(i8* %0, i8* %1) #10
-  %4 = icmp eq i32 %3, 0
-  %5 = zext i1 %4 to i32
-  ret i32 %5
-}
-
-; Function Attrs: nounwind readonly
-declare i32 @strcmp(i8* nocapture, i8* nocapture) local_unnamed_addr #8
 
 attributes #0 = { nounwind uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
@@ -205,10 +151,8 @@ attributes #3 = { noreturn nounwind uwtable "correctly-rounded-divide-sqrt-fp-ma
 attributes #4 = { noreturn "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #5 = { argmemonly nounwind }
 attributes #6 = { argmemonly nounwind readonly "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #7 = { nounwind readonly uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #8 = { nounwind readonly "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #9 = { noreturn nounwind }
-attributes #10 = { nounwind readonly }
+attributes #7 = { noreturn nounwind }
+attributes #8 = { nounwind readonly }
 
 !llvm.ident = !{!0}
 !llvm.module.flags = !{!1}

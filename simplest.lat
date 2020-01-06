@@ -1,48 +1,6 @@
 /**/
-int fact1(int n) {
-    if (n == 1) {
-        return 1;
-    }    
-    return fact1(n + -1) * n;
-}
 
-
-int fact2(int n) {
-    if (n == 1) {
-        return 1;
-    }
-    else {
-        return fact2(n + -1) * n;
-    }
-}
-
-int main2() {
-    printInt(fact1(5));
-    printInt(fact2(7));
-
-    int a = readInt();
-    if (a < 0) {
-        printInt(-1);
-        a = -1;
-    }
-    else {
-        printInt(1);
-        a = 1;
-    }
-    printInt(a);
+int main() {
+    printString("Ola" + "Piotr");
     return 0;
 }
-
-// TODO: if ret else ret
-
-int main()
-{
-    int a = 5;
-    while(a < 10) {
-        a++;
-        printInt(a);
-    }
-    printInt(a);
-    return a;
-}
-

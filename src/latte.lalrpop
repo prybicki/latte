@@ -40,8 +40,7 @@ GOperandMul: BinaryOp = {
 }
 
 GInteger: i32 = {
-    <l:@L> <v:r"[\+\-]?[0-9]+"> =>? {
-        // panic possible here TODO handle
+    <v:r"[0-9]+"> =>? {
         match i32::from_str(v) {
             Err(_) => Err(lalrpop_util::ParseError::User{error: "oh no, invalid integer! ;C" }),
             Ok(v) => Ok(v),
