@@ -236,7 +236,7 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
 }
 
 fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut Env, diags: &mut Diags) {
-    stmt_node.ret = match &mut stmt_node.stmt {
+    stmt_node.will_return = match &mut stmt_node.stmt {
         Stmt::BStmt(stmts) => {
             env.push_scope();
             for stmt_node in stmts.iter_mut() {
@@ -245,7 +245,7 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
             env.pop_scope();
 
             match stmts.last() {
-                Some(stmt) => stmt.ret,
+                Some(stmt) => stmt.will_return,
                 None => Some(false)
             }
         },
@@ -311,9 +311,9 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
                     }
 
                     match (&condval, &fstmt) {
-                        (Some(true), _) => tstmt.ret,
-                        (Some(false), Some(_)) => fstmt.as_ref().unwrap().ret,
-                        (None, Some(_)) => Some(tstmt.ret.unwrap() && fstmt.as_ref().unwrap().ret.unwrap()),
+                        (Some(true), _) => tstmt.will_return,
+                        (Some(false), Some(_)) => fstmt.as_ref().unwrap().will_return,
+                        (None, Some(_)) => Some(tstmt.will_return.unwrap() && fstmt.as_ref().unwrap().will_return.unwrap()),
                         _ => Some(false)
                     }
                 }
@@ -376,13 +376,26 @@ pub fn verify_program(prog: &mut Program) -> Diags {
         verify_stmt(&mut fdef.body, &fdef.type_spec.ttype, &fenv, &mut env, &mut diags);
 
         if fdef.type_spec.ttype != Type::Void {
-            if !fdef.body.ret.unwrap() {
+            if !fdef.body.will_return.unwrap() {
                 diags.push(diag::Diagnostic {
                     message: format!("no return statement in non-void function {}", fdef.ident),
                     details: None
                 });
             }
         }
+//        else { // void, push implicit vret if needed
+//            if let Stmt::BStmt(vec) = &mut fdef.body.stmt {
+//                match vec.last() {
+//                    None => {
+//                        vec.push(Box::new(StmtNode{span: Span(0, 0), ret: Some(true), stmt: Stmt::VRet}));
+//                    }
+//                    Some(lstmt) if !lstmt.ret.unwrap() => {
+//                        vec.push(Box::new(StmtNode{span: Span(0, 0), ret: Some(true), stmt: Stmt::VRet}));
+//                    }
+//                    _ => ()
+//                }
+//            }
+//        }
     }
 
     return diags;

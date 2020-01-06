@@ -190,6 +190,96 @@ impl<'llvm> Backend<'llvm> {
         }
     }
 
+    fn compile_nontrivial_cond_stmt(&mut self, cond: &Box<ExpNode>, tstmt: &Box<StmtNode>, fstmt: &Option<Box<StmtNode>>, node_will_return: bool) {
+        let fnval = self.curr_fn.unwrap();
+
+        // TODO make it lazy
+
+//        let tstmt_returns = tstmt.will_return.unwrap();
+//        let fstmt_exists_and_returns = if let Some(fstmt) = fstmt { fstmt.will_return.unwrap() } else { false };
+
+        // continuation is not needed when we know that all paths returns
+
+        // create basic block for all statements, they may end up being empty
+        let cond_val = self.compile_exp(cond).unwrap().into_int_value();
+
+        let pred_block = self.bd.get_insert_block().unwrap();
+        let then_block = self.llvm.append_basic_block(fnval, "then");
+        let cont_block = self.llvm.append_basic_block(fnval, "cont");
+        let else_block = self.llvm.append_basic_block(fnval, "else");
+
+        let then_returns_if_entered = node_will_return || tstmt.will_return.unwrap();
+        let else_returns_if_entered = match fstmt {
+            None => false,
+            Some(fstmt) => node_will_return || fstmt.will_return.unwrap(),
+        };
+        let pred_venv = self.venv.clone();
+
+        // branch
+        self.bd.build_conditional_branch(
+            cond_val,
+            &then_block,
+            if fstmt.is_none() { &cont_block } else { &else_block }
+        );
+
+        // build true-statement block
+        self.bd.position_at_end(&then_block);
+        self.compile_stmt(tstmt);
+        if !then_returns_if_entered {
+            self.bd.build_unconditional_branch(&cont_block);
+        }
+        // expect to know the same set of variables after compiling true statment, possibly with different values
+        assert!(self.venv.keys().eq(pred_venv.keys()));
+
+        // remember variables after true-statement and after optional false-statement
+        let then_venv = self.venv.clone();
+        let mut else_venv = None; // just a placeholder here
+
+        // build false-statement block
+        if let Some(fstmt) = fstmt {
+            // roll back variables to cancell effects of compilation of true statement
+            self.venv.clone_from(&pred_venv);
+            self.bd.position_at_end(&else_block);
+            self.compile_stmt(fstmt);
+
+            if !else_returns_if_entered {
+                self.bd.build_unconditional_branch(&cont_block);
+            }
+            // expect to know the same set of variables after compiling true statment, possibly with different values
+            assert!(self.venv.keys().eq(pred_venv.keys()));
+            // remember variables
+            else_venv = Some(self.venv.clone());
+        }
+
+        // cont block is necessary
+        if !node_will_return {
+            self.bd.position_at_end(&cont_block);
+
+            for var in pred_venv.keys() {
+                let mut entries: Vec<(&dyn BasicValue, &BasicBlock)> = Vec::new();
+                // TODO simplify it?
+                let pred_val = pred_venv.get(var).unwrap();
+                entries.push((pred_val, &pred_block));
+
+                if !then_returns_if_entered {
+                    let then_val = then_venv.get(var).unwrap();
+                    entries.push((then_val, &then_block));
+
+                }
+
+                if fstmt.is_some() && !else_returns_if_entered {
+                    let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
+                    entries.push((else_val, &else_block));
+                }
+
+                let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
+                let phi = self.bd.build_phi(ttype, var);
+                phi.add_incoming(entries.as_slice());
+                self.venv.replace_topmost(var.clone(), phi.as_basic_value());
+            }
+        }
+    }
+
     fn compile_stmt(&mut self, node: &StmtNode) {
         match &node.stmt {
             Stmt::BStmt(stmts) => {
@@ -238,100 +328,19 @@ impl<'llvm> Backend<'llvm> {
                 self.bd.build_return(None);
             }
             Stmt::Cond(cond, tstmt, fstmt) => {
-                let fnval = self.curr_fn.unwrap();
-
-                // TODO make it lazy
-
-                let tstmt_returns = tstmt.ret.unwrap();
-                let fstmt_returns = if let Some(fstmt) = fstmt { fstmt.ret.unwrap() } else { false };
-                let non_returning_blocks = !tstmt_returns as i32 + !fstmt_returns as i32;
-
-                // create basic block for all statements, they may end up being empty
-                let cond = self.compile_exp(cond).unwrap().into_int_value();
-
-                let pred_block = self.bd.get_insert_block().unwrap();
-                let then_block = self.llvm.append_basic_block(fnval, "then");
-                let cont_block = self.llvm.append_basic_block(fnval, "cont");
-                let else_block = self.llvm.append_basic_block(fnval, "else");
-
-                // remember values before branching
-                let pred_venv = self.venv.clone();
-
-                // branch
-                self.bd.build_conditional_branch(
-                    cond,
-                    &then_block,
-                    if fstmt.is_none() { &cont_block } else { &else_block }
-                );
-
-                // build true-statement block
-                self.bd.position_at_end(&then_block);
-                self.compile_stmt(tstmt);
-                // if true-statement does not return, jump to continuation block
-                if !tstmt.ret.unwrap() {
-                    self.bd.build_unconditional_branch(&cont_block);
-                }
-                // expect to know the same set of variables after compiling true statment, possibly with different values
-                assert!(self.venv.keys().eq(pred_venv.keys()));
-
-                // remember variables after true-statement and after optional false-statement
-                let then_venv = self.venv.clone();
-                let mut else_venv = None; // just a placeholder here
-
-                // build false-statement block
-                if let Some(fstmt) = fstmt {
-                    // roll back variables to cancell effects of compilation of true statement
-                    self.venv.clone_from(&pred_venv);
-                    self.bd.position_at_end(&else_block);
-                    self.compile_stmt(fstmt);
-                    // if false-statment does not return, jump to continuation block
-                    if !fstmt.ret.unwrap() {
-                        self.bd.build_unconditional_branch(&cont_block);
-                    }
-                    // expect to know the same set of variables after compiling true statment, possibly with different values
-                    assert!(self.venv.keys().eq(pred_venv.keys()));
-                    // remember variables
-                    else_venv = Some(self.venv.clone());
-                }
-
-                // cont block is necessary
-                if non_returning_blocks > 0 {
-                    self.bd.position_at_end(&cont_block);
-
-                    for var in pred_venv.keys() {
-                        let mut entries: Vec<(&dyn BasicValue, &BasicBlock)> = Vec::new();
-                        // TODO simplify it?
-
-                        // one of the block does not return, so must be one of the predecessors
-                        if fstmt.is_none() {
-                            let pred_val = pred_venv.get(var).unwrap();
-                            entries.push((pred_val, &pred_block));
-                        }
-
-                        // true-statement precedes if it does not return
-                        if !tstmt_returns { // tstmt does not return
-                            let then_val = then_venv.get(var).unwrap();
-                            entries.push((then_val, &then_block));
-                        }
-                        // false-statment precedes if it exists and does not return
-                        if fstmt.is_some() && !fstmt_returns { // fstmt exists and does not return
-                            let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
-                            entries.push((else_val, &else_block));
-                        }
-
-                        assert_ne!(entries.len(), 0);
-                        if entries.len() == 1 {
-                            let val = entries.first().unwrap().0;
-                            self.venv.replace_topmost(var.clone(), val.as_basic_value_enum());
-                        }
-                        else {
-                            let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
-                            let phi = self.bd.build_phi(ttype, var);
-                            phi.add_incoming(entries.as_slice());
-                            self.venv.replace_topmost(var.clone(), phi.as_basic_value());
+                match cond.typeval.as_ref().unwrap() {
+                    ExpTypeVal::Bool(Some(true)) => self.compile_stmt(tstmt),
+                    ExpTypeVal::Bool(Some(false)) => {
+                        if let Some(stmt) = fstmt {
+                            self.compile_stmt(stmt)
                         }
                     }
+                    ExpTypeVal::Bool(None) => {
+                        self.compile_nontrivial_cond_stmt(cond, tstmt, fstmt, node.will_return.unwrap())
+                    }
+                    _ => panic!("backend: invalid type in condition")
                 }
+
             }
             Stmt::While(cond, body) => {
                 let fnval = self.curr_fn.unwrap();
@@ -339,7 +348,7 @@ impl<'llvm> Backend<'llvm> {
                 let pred_venv = self.venv.clone();
 
                 // TODO make it lazy
-                let body_returns = body.ret.unwrap();
+                let body_returns = body.will_return.unwrap();
                 let cond_block = self.llvm.append_basic_block(fnval, "loop_cond");
                 let body_block = self.llvm.append_basic_block(fnval, "loop_body");
                 let cont_block = self.llvm.append_basic_block(fnval, "loop_cont");
@@ -448,6 +457,7 @@ impl<'llvm> Backend<'llvm> {
 
         for fndef in &prog.functions {
             self.compile_fndef(fndef);
+
         }
     }
 }

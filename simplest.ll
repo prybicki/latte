@@ -8,33 +8,9 @@ target triple = "x86_64-pc-linux-gnu"
 @.str.3 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
 @.str.4 = private unnamed_addr constant [7 x i8] c"%1023s\00", align 1
 
-define i32 @f() {
-entry:
-  br i1 true, label %then, label %else
-
-then:                                             ; preds = %entry
-  ret i32 0
-
-else:                                             ; preds = %entry
-  br label %cont
-}
-
-define i32 @g() {
-entry:
-  br i1 false, label %then, label %else
-
-then:                                             ; preds = %entry
-  br label %cont
-
-else:                                             ; preds = %entry
-  ret i32 0
-}
-
-declare void @p()
-
 define i32 @main() {
 entry:
-  call void @p()
+  call void @printInt(i32 0)
   ret i32 0
 }
 
