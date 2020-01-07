@@ -1,3 +1,4 @@
+use crate::scoped_map::ScopedMap;
 use crate::ast::*;
 use inkwell::*;
 use inkwell::builder::Builder;
@@ -9,9 +10,8 @@ use either::Either;
 use std::collections::HashMap;
 use inkwell::memory_buffer::MemoryBuffer;
 use std::path::Path;
-use std::fs;
-use crate::scoped_map::ScopedMap;
 use inkwell::basic_block::BasicBlock;
+use inkwell::support::LLVMString;
 
 type FEnv<'llvm> = HashMap<Ident, FunctionValue<'llvm>>;
 type VEnv<'llvm> = ScopedMap<Ident, BasicValueEnum<'llvm>>; // value env
@@ -96,27 +96,27 @@ impl<'llvm> Backend<'llvm> {
             match (op, ltv, rtv) {
                 (BinaryOp::Or, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
                     let curr_fn = self.curr_fn.unwrap();
-                    // le = lazy eval
+
                     let current_bb = self.bd.get_insert_block().unwrap();
                     let le_lhs_false = self.llvm.append_basic_block(curr_fn, "lazy_eval_or_lhs_false");
                     let le_done = self.llvm.append_basic_block(curr_fn, "lazy_eval_or_done");
 
-                    // To wyemituj kod dla foo
+                    // evaluate lhs and branch to "done" or rhs evaluation depending whether lhs was conclusive or not
                     let lhs_val = self.compile_exp(lexp).unwrap().into_int_value();
-                    // Potem wyemituj conditional brancha / z tego foo w przypadku if-true skok do trzeciego bloku
                     self.bd.build_conditional_branch(
                         lhs_val,
                         &le_done,
                         &le_lhs_false
                     );
 
-                    // W bloku if-false wyewaluuj bar
+                    // for the case lhs was non-conclusive, emit rhs evaluation in separate block
                     self.bd.position_at_end(&le_lhs_false);
                     let rhs_val = self.compile_exp(rexp).unwrap().into_int_value();
+                    // rhs may be also evaluated lazily, so remember it's "done" block
                     let rhs_end_block = self.bd.get_insert_block().unwrap();
-                    // i potem z bloku if-false bezwarunkowo, (...)
                     self.bd.build_unconditional_branch(&le_done);
 
+                    // build done
                     self.bd.position_at_end(&le_done);
                     let phi = self.bd.build_phi(self.llvm.bool_type(), "lazy_eval_or_result");
                     let true_value = self.llvm.bool_type().const_int(1, false);
@@ -125,32 +125,29 @@ impl<'llvm> Backend<'llvm> {
                     phi.as_basic_value()
                 }
                 (BinaryOp::And, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
+                    // SEE OR FOR COMMENTS
                     let curr_fn = self.curr_fn.unwrap();
-                    // le = lazy eval
                     let current_bb = self.bd.get_insert_block().unwrap();
                     let le_lhs_true = self.llvm.append_basic_block(curr_fn, "lazy_eval_and_lhs_true");
                     let le_done = self.llvm.append_basic_block(curr_fn, "lazy_eval_and_done");
 
-                    // To wyemituj kod dla foo
                     let lhs_val = self.compile_exp(lexp).unwrap().into_int_value();
-                    // Potem wyemituj conditional brancha / z tego foo w przypadku if-true skok do trzeciego bloku
                     self.bd.build_conditional_branch(
                         lhs_val,
                         &le_lhs_true,
                         &le_done
                     );
 
-                    // W bloku if-false wyewaluuj bar
                     self.bd.position_at_end(&le_lhs_true);
                     let rhs_val = self.compile_exp(rexp).unwrap().into_int_value();
                     let rhs_end_block = self.bd.get_insert_block().unwrap();
-                    // i potem z bloku if-false bezwarunkowo, (...)
                     self.bd.build_unconditional_branch(&le_done);
 
                     self.bd.position_at_end(&le_done);
                     let phi = self.bd.build_phi(self.llvm.bool_type(), "lazy_eval_and_result");
                     let false_value = self.llvm.bool_type().const_int(0, false);
                     phi.add_incoming(&[(&false_value, &current_bb), (&rhs_val, &rhs_end_block)]);
+
                     phi.as_basic_value()
                 }
                 // eager evaluation
@@ -248,38 +245,6 @@ impl<'llvm> Backend<'llvm> {
         }
     }
 
-//    fn compile_lazy_bool(&mut self, cond: &Box<ExpNode>) -> BasicValueEnum {
-//        let curr_fn = self.curr_fn.unwrap();
-//
-//        let true_block = self.llvm.append_basic_block(curr_fn, "lazy_true");
-//        let false_block = self.llvm.append_basic_block(curr_fn, "lazy_false");
-//        match &cond.exp {
-//            Exp::Binary(lhs, BinaryOp::And, rhs) => {
-//                let eval_rhs = self.llvm.append_basic_block(curr_fn, "and_right");
-//                // if lhs true, eval rhs, else go to false_block
-//                self.compile_lazy_bool(lhs, &eval_rhs, false_block);
-//                self.bd.position_at_end(&eval_rhs);
-//                self.compile_lazy_bool(rhs, &true_block, &false_block);
-//            },
-//            Exp::Binary(lhs, BinaryOp::Or, rhs) => {
-//                let eval_rhs = self.llvm.append_basic_block(curr_fn, "or_right");
-//                // if lhs true, go to true_block, else eval rhs
-//                self.compile_lazy_bool(lhs, &true_block, &eval_rhs);
-//                self.bd.position_at_end(&eval_rhs);
-//                self.compile_lazy_bool(rhs, &true_block, &false_block);
-//            },
-//            // any other value is evaluated eagerly
-//            _ => {
-//                let exp_value = self.compile_exp(cond).unwrap().into_int_value();
-//                self.bd.build_conditional_branch(
-//                    exp_value,
-//                    true_block,
-//                    false_block,
-//                );
-//            }
-//        }
-//    }
-
     fn compile_nontrivial_cond_stmt(&mut self, cond: &Box<ExpNode>, tstmt: &Box<StmtNode>, fstmt: &Option<Box<StmtNode>>, node_will_return: bool) {
         let curr_fn = self.curr_fn.unwrap();
 
@@ -339,7 +304,6 @@ impl<'llvm> Backend<'llvm> {
 
             for var in pred_venv.keys() {
                 let mut entries: Vec<(&dyn BasicValue, &BasicBlock)> = Vec::new();
-                // TODO simplify it?
 
                 // no else means we take values from pred
                 if fstmt.is_none() {
@@ -357,8 +321,6 @@ impl<'llvm> Backend<'llvm> {
                     let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
                     entries.push((else_val, &else_block));
                 }
-
-                // TODO entries may be 1 or even 0!
 
                 let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
                 let phi = self.bd.build_phi(ttype, var);
@@ -435,7 +397,6 @@ impl<'llvm> Backend<'llvm> {
                 let pred_block = self.bd.get_insert_block().unwrap();
                 let pred_venv = self.venv.clone();
 
-                // TODO make it lazy
                 let body_returns = body.will_return.unwrap();
                 let cond_block = self.llvm.append_basic_block(fnval, "loop_cond");
                 let body_block = self.llvm.append_basic_block(fnval, "loop_body");
@@ -551,16 +512,30 @@ impl<'llvm> Backend<'llvm> {
     }
 }
 
-pub fn compile(prog: &Program) -> () {
+pub fn compile(prog: &Program, path: &Path) -> Result<(), LLVMString> {
+    // split path
+    let mod_name = path.file_name().unwrap().to_str().unwrap().to_owned();
+    let dir_path = path.parent().unwrap_or(Path::new("."));
+
+    // init things
     let llvm = Context::create();
-    let mut backend = Backend::new(&llvm, "simplest");
-    backend.compile_prog(prog);
+    let mut backend = Backend::new(&llvm, &mod_name);
+
+    // load runtime
     let rt_buffer = MemoryBuffer::create_from_file(Path::new("lib/runtime.ll")).unwrap();
     let rt_mod = backend.llvm.create_module_from_ir(rt_buffer).unwrap();
+
+    // compile & link
+    backend.compile_prog(prog);
     backend.md.link_in_module(rt_mod).unwrap();
-    backend.md.print_to_file("simplest.ll").unwrap();
-    if let Err(e) = backend.md.verify() {
-        println!("Errors:\n{}", e.to_string());
+
+    // handle result
+    match backend.md.verify() {
+        Ok(_) => {
+            backend.md.print_to_file(dir_path.join(Path::new(&(mod_name.clone() + ".ll"))))?;
+            backend.md.write_bitcode_to_path(dir_path.join(Path::new(&(mod_name.clone() + ".bc"))).as_path());
+            Ok(())
+        },
+        Err(e) => Err(e)
     }
-    backend.md.write_bitcode_to_file(&fs::File::create("simplest.bc").unwrap(), true, false);
 }
