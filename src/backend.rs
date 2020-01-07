@@ -79,13 +79,12 @@ impl<'llvm> Backend<'llvm> {
     }
 
     fn compile_bin_exp(&mut self, op: &BinaryOp, lexp: &ExpNode, rexp: &ExpNode) -> BasicValueEnum<'llvm> {
-        let lval = self.compile_exp(lexp).unwrap();
-        let rval = self.compile_exp(rexp).unwrap();
         let ltv = lexp.typeval.as_ref().unwrap();
         let rtv = rexp.typeval.as_ref().unwrap();
-        if let (ExpTypeVal::Str(_), ExpTypeVal::Str(_)) = (ltv, rtv) {
-            let lval = lval.into_pointer_value();
-            let rval = rval.into_pointer_value();
+        // string evaluation
+        if let (BinaryOp::Add, ExpTypeVal::Str(_), ExpTypeVal::Str(_)) = (op, ltv, rtv) {
+            let lval = self.compile_exp(lexp).unwrap().into_pointer_value();
+            let rval = self.compile_exp(rexp).unwrap().into_pointer_value();
 
             let fnval = *self.fenv.get("__latc_concat_str").unwrap();
             let argsvals: Vec<BasicValueEnum> = vec![lval.into(), rval.into()];
@@ -93,55 +92,114 @@ impl<'llvm> Backend<'llvm> {
             result.left().expect("got void from __latc_concat_str?")
         }
         else {
-            let lval = lval.into_int_value();
-            let rval = rval.into_int_value();
+            // lazy evaluation
             match (op, ltv, rtv) {
-                (BinaryOp::Eq, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
-                    self.bd.build_int_compare(IntPredicate::EQ, lval, rval, "bool_eq").into()
-                },
-                (BinaryOp::Eq, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::EQ, lval, rval, "int_eq").into()
-                }
-                (BinaryOp::Neq, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
-                    self.bd.build_int_compare(IntPredicate::NE, lval, rval, "bool_neq").into()
-                }
-                (BinaryOp::Neq, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::NE, lval, rval, "int_neq").into()
-                }
                 (BinaryOp::Or, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
-                    self.bd.build_or(lval, rval, "or").into()
+                    let curr_fn = self.curr_fn.unwrap();
+                    // le = lazy eval
+                    let current_bb = self.bd.get_insert_block().unwrap();
+                    let le_lhs_false = self.llvm.append_basic_block(curr_fn, "lazy_eval_or_lhs_false");
+                    let le_done = self.llvm.append_basic_block(curr_fn, "lazy_eval_or_done");
+
+                    // To wyemituj kod dla foo
+                    let lhs_val = self.compile_exp(lexp).unwrap().into_int_value();
+                    // Potem wyemituj conditional brancha / z tego foo w przypadku if-true skok do trzeciego bloku
+                    self.bd.build_conditional_branch(
+                        lhs_val,
+                        &le_done,
+                        &le_lhs_false
+                    );
+
+                    // W bloku if-false wyewaluuj bar
+                    self.bd.position_at_end(&le_lhs_false);
+                    let rhs_val = self.compile_exp(rexp).unwrap().into_int_value();
+                    let rhs_end_block = self.bd.get_insert_block().unwrap();
+                    // i potem z bloku if-false bezwarunkowo, (...)
+                    self.bd.build_unconditional_branch(&le_done);
+
+                    self.bd.position_at_end(&le_done);
+                    let phi = self.bd.build_phi(self.llvm.bool_type(), "lazy_eval_or_result");
+                    let true_value = self.llvm.bool_type().const_int(1, false);
+                    phi.add_incoming(&[(&true_value, &current_bb), (&rhs_val, &rhs_end_block)]);
+
+                    phi.as_basic_value()
                 }
                 (BinaryOp::And, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
-                    self.bd.build_and(lval, rval, "and").into()
+                    let curr_fn = self.curr_fn.unwrap();
+                    // le = lazy eval
+                    let current_bb = self.bd.get_insert_block().unwrap();
+                    let le_lhs_true = self.llvm.append_basic_block(curr_fn, "lazy_eval_and_lhs_true");
+                    let le_done = self.llvm.append_basic_block(curr_fn, "lazy_eval_and_done");
+
+                    // To wyemituj kod dla foo
+                    let lhs_val = self.compile_exp(lexp).unwrap().into_int_value();
+                    // Potem wyemituj conditional brancha / z tego foo w przypadku if-true skok do trzeciego bloku
+                    self.bd.build_conditional_branch(
+                        lhs_val,
+                        &le_lhs_true,
+                        &le_done
+                    );
+
+                    // W bloku if-false wyewaluuj bar
+                    self.bd.position_at_end(&le_lhs_true);
+                    let rhs_val = self.compile_exp(rexp).unwrap().into_int_value();
+                    let rhs_end_block = self.bd.get_insert_block().unwrap();
+                    // i potem z bloku if-false bezwarunkowo, (...)
+                    self.bd.build_unconditional_branch(&le_done);
+
+                    self.bd.position_at_end(&le_done);
+                    let phi = self.bd.build_phi(self.llvm.bool_type(), "lazy_eval_and_result");
+                    let false_value = self.llvm.bool_type().const_int(0, false);
+                    phi.add_incoming(&[(&false_value, &current_bb), (&rhs_val, &rhs_end_block)]);
+                    phi.as_basic_value()
                 }
-                (BinaryOp::Gt, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::SGT, lval, rval, "gt").into()
+                // eager evaluation
+                _ => {
+                    let lval = self.compile_exp(lexp).unwrap().into_int_value();
+                    let rval = self.compile_exp(rexp).unwrap().into_int_value();
+                    match (op, ltv, rtv) {
+                        (BinaryOp::Eq, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
+                            self.bd.build_int_compare(IntPredicate::EQ, lval, rval, "bool_eq").into()
+                        },
+                        (BinaryOp::Eq, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::EQ, lval, rval, "int_eq").into()
+                        }
+                        (BinaryOp::Neq, ExpTypeVal::Bool(_), ExpTypeVal::Bool(_)) => {
+                            self.bd.build_int_compare(IntPredicate::NE, lval, rval, "bool_neq").into()
+                        }
+                        (BinaryOp::Neq, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::NE, lval, rval, "int_neq").into()
+                        }
+                        (BinaryOp::Gt, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::SGT, lval, rval, "gt").into()
+                        }
+                        (BinaryOp::Gte, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::SGE, lval, rval, "gte").into()
+                        }
+                        (BinaryOp::Lt, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::SLT, lval, rval, "lt").into()
+                        }
+                        (BinaryOp::Lte, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_compare(IntPredicate::SLE, lval, rval, "lte").into()
+                        }
+                        (BinaryOp::Add, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_add(lval, rval, "add").into()
+                        }
+                        (BinaryOp::Sub, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_sub(lval, rval, "sub").into()
+                        }
+                        (BinaryOp::Mul, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_mul(lval, rval, "mul").into()
+                        }
+                        (BinaryOp::Mod, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_signed_rem(lval, rval, "mod").into()
+                        }
+                        (BinaryOp::Div, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
+                            self.bd.build_int_signed_div(lval, rval, "div").into()
+                        }
+                        _ => panic!("unexpected binary expression")
+                    }
                 }
-                (BinaryOp::Gte, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::SGE, lval, rval, "gte").into()
-                }
-                (BinaryOp::Lt, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::SLT, lval, rval, "lt").into()
-                }
-                (BinaryOp::Lte, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_compare(IntPredicate::SLE, lval, rval, "lte").into()
-                }
-                (BinaryOp::Add, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_add(lval, rval, "add").into()
-                }
-                (BinaryOp::Sub, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_sub(lval, rval, "sub").into()
-                }
-                (BinaryOp::Mul, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_mul(lval, rval, "mul").into()
-                }
-                (BinaryOp::Mod, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_signed_rem(lval, rval, "mod").into()
-                }
-                (BinaryOp::Div, ExpTypeVal::Int(_), ExpTypeVal::Int(_)) => {
-                    self.bd.build_int_signed_div(lval, rval, "div").into()
-                }
-                _ => panic!("unexpected binary expression")
             }
         }
     }
@@ -190,23 +248,46 @@ impl<'llvm> Backend<'llvm> {
         }
     }
 
+//    fn compile_lazy_bool(&mut self, cond: &Box<ExpNode>) -> BasicValueEnum {
+//        let curr_fn = self.curr_fn.unwrap();
+//
+//        let true_block = self.llvm.append_basic_block(curr_fn, "lazy_true");
+//        let false_block = self.llvm.append_basic_block(curr_fn, "lazy_false");
+//        match &cond.exp {
+//            Exp::Binary(lhs, BinaryOp::And, rhs) => {
+//                let eval_rhs = self.llvm.append_basic_block(curr_fn, "and_right");
+//                // if lhs true, eval rhs, else go to false_block
+//                self.compile_lazy_bool(lhs, &eval_rhs, false_block);
+//                self.bd.position_at_end(&eval_rhs);
+//                self.compile_lazy_bool(rhs, &true_block, &false_block);
+//            },
+//            Exp::Binary(lhs, BinaryOp::Or, rhs) => {
+//                let eval_rhs = self.llvm.append_basic_block(curr_fn, "or_right");
+//                // if lhs true, go to true_block, else eval rhs
+//                self.compile_lazy_bool(lhs, &true_block, &eval_rhs);
+//                self.bd.position_at_end(&eval_rhs);
+//                self.compile_lazy_bool(rhs, &true_block, &false_block);
+//            },
+//            // any other value is evaluated eagerly
+//            _ => {
+//                let exp_value = self.compile_exp(cond).unwrap().into_int_value();
+//                self.bd.build_conditional_branch(
+//                    exp_value,
+//                    true_block,
+//                    false_block,
+//                );
+//            }
+//        }
+//    }
+
     fn compile_nontrivial_cond_stmt(&mut self, cond: &Box<ExpNode>, tstmt: &Box<StmtNode>, fstmt: &Option<Box<StmtNode>>, node_will_return: bool) {
-        let fnval = self.curr_fn.unwrap();
-
-        // TODO make it lazy
-
-//        let tstmt_returns = tstmt.will_return.unwrap();
-//        let fstmt_exists_and_returns = if let Some(fstmt) = fstmt { fstmt.will_return.unwrap() } else { false };
-
-        // continuation is not needed when we know that all paths returns
+        let curr_fn = self.curr_fn.unwrap();
 
         // create basic block for all statements, they may end up being empty
-        let cond_val = self.compile_exp(cond).unwrap().into_int_value();
-
         let pred_block = self.bd.get_insert_block().unwrap();
-        let then_block = self.llvm.append_basic_block(fnval, "then");
-        let cont_block = self.llvm.append_basic_block(fnval, "cont");
-        let else_block = self.llvm.append_basic_block(fnval, "else");
+        let then_block = self.llvm.append_basic_block(curr_fn, "then");
+        let cont_block = self.llvm.append_basic_block(curr_fn, "cont");
+        let else_block = self.llvm.append_basic_block(curr_fn, "else");
 
         let then_returns_if_entered = node_will_return || tstmt.will_return.unwrap();
         let else_returns_if_entered = match fstmt {
@@ -215,7 +296,8 @@ impl<'llvm> Backend<'llvm> {
         };
         let pred_venv = self.venv.clone();
 
-        // branch
+        let cond_val = self.compile_exp(cond).unwrap().into_int_value();
+
         self.bd.build_conditional_branch(
             cond_val,
             &then_block,
@@ -258,8 +340,12 @@ impl<'llvm> Backend<'llvm> {
             for var in pred_venv.keys() {
                 let mut entries: Vec<(&dyn BasicValue, &BasicBlock)> = Vec::new();
                 // TODO simplify it?
-                let pred_val = pred_venv.get(var).unwrap();
-                entries.push((pred_val, &pred_block));
+
+                // no else means we take values from pred
+                if fstmt.is_none() {
+                    let pred_val = pred_venv.get(var).unwrap();
+                    entries.push((pred_val, &pred_block));
+                }
 
                 if !then_returns_if_entered {
                     let then_val = then_venv.get(var).unwrap();
@@ -271,6 +357,8 @@ impl<'llvm> Backend<'llvm> {
                     let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
                     entries.push((else_val, &else_block));
                 }
+
+                // TODO entries may be 1 or even 0!
 
                 let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
                 let phi = self.bd.build_phi(ttype, var);
@@ -422,11 +510,12 @@ impl<'llvm> Backend<'llvm> {
 
             let mut bb = function.get_first_basic_block();
             while let Some(basic_block) = bb {
+                let next = basic_block.get_next_basic_block();
                 if let None = basic_block.get_first_instruction() {
                     basic_block.remove_from_function().expect("error while removing unused basic blocks");
                 }
+                bb = next;
 
-                bb = basic_block.get_next_basic_block();
             }
 
             ff = function.get_next_function();

@@ -37,7 +37,7 @@ pub struct DeclBody {
     pub init: Option<Box<ExpNode>>
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum ExpTypeVal {
     Int(Option<i32>),
     Bool(Option<bool>),

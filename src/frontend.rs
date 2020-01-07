@@ -383,19 +383,19 @@ pub fn verify_program(prog: &mut Program) -> Diags {
                 });
             }
         }
-//        else { // void, push implicit vret if needed
-//            if let Stmt::BStmt(vec) = &mut fdef.body.stmt {
-//                match vec.last() {
-//                    None => {
-//                        vec.push(Box::new(StmtNode{span: Span(0, 0), ret: Some(true), stmt: Stmt::VRet}));
-//                    }
-//                    Some(lstmt) if !lstmt.ret.unwrap() => {
-//                        vec.push(Box::new(StmtNode{span: Span(0, 0), ret: Some(true), stmt: Stmt::VRet}));
-//                    }
-//                    _ => ()
-//                }
-//            }
-//        }
+        else { // void, push implicit vret if needed
+            if let Stmt::BStmt(vec) = &mut fdef.body.stmt {
+                match vec.last() {
+                    None => {
+                        vec.push(Box::new(StmtNode{span: Span(0, 0), will_return: Some(true), stmt: Stmt::VRet}));
+                    }
+                    Some(lstmt) if !lstmt.will_return.unwrap() => {
+                        vec.push(Box::new(StmtNode{span: Span(0, 0), will_return: Some(true), stmt: Stmt::VRet}));
+                    }
+                    _ => ()
+                }
+            }
+        }
     }
 
     return diags;
