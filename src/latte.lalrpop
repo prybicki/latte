@@ -1,8 +1,6 @@
 use std::str::FromStr;
 use crate::ast::*;
 
-// TODO make sure all panics at least print ERROR
-
 grammar;
 
 // *** *** *** EXPESSIONS *** *** *** //

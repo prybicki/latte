@@ -120,7 +120,7 @@ pub enum Stmt {
     Ass(Ident, Box<ExpNode>),
     Incr(Ident),
     Decr(Ident),
-    Ret(Box<ExpNode>), // TODO Use Option here
+    Ret(Box<ExpNode>),
     VRet,
     Cond(Box<ExpNode>, Box<StmtNode>, Option<Box<StmtNode>>),
     While(Box<ExpNode>, Box<StmtNode>),

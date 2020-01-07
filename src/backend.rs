@@ -18,8 +18,6 @@ type VEnv<'llvm> = ScopedMap<Ident, BasicValueEnum<'llvm>>; // value env
 type TEnv<'llvm> = ScopedMap<Ident, Type>; // type env
 type SEnv<'llvm> = HashMap<String, GlobalValue<'llvm>>;
 
-// TODO: Backend is quietly assuming that condition expressions have no side effects (other than printing)
-
 struct Backend<'llvm> {
     llvm: &'llvm Context,
     md: Module<'llvm>,
@@ -202,7 +200,6 @@ impl<'llvm> Backend<'llvm> {
     }
 
     fn compile_exp(&mut self, node: &ExpNode) -> Option<BasicValueEnum<'llvm>> {
-        // TODO: if node has typeval with value, return literal :)
         match &node.exp {
             Exp::Call(ident, args) => {
                 let fnval = *self.fenv.get(ident).unwrap();
@@ -514,7 +511,7 @@ impl<'llvm> Backend<'llvm> {
 
 pub fn compile(prog: &Program, path: &Path) -> Result<(), LLVMString> {
     // split path
-    let mod_name = path.file_name().unwrap().to_str().unwrap().to_owned();
+    let mod_name = path.file_stem().unwrap().to_str().unwrap().to_owned();
     let dir_path = path.parent().unwrap_or(Path::new("."));
 
     // init things

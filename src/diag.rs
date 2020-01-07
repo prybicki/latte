@@ -84,7 +84,6 @@ pub fn gen_from_parse_error(err: ParseError) -> Diagnostic {
             ((l, l), "unexpected eof".to_owned())
         },
         ParseError::UnrecognizedToken{token: (b, latte::Token(_, token_str), e), expected: exp_vec} => {
-            // TODO pretty print of exp_vec
             ((b, e), format!("unrecognized token: {:?}, expected one of: {:?}", token_str, exp_vec))
         },
         ParseError::ExtraToken{token: (b, latte::Token(_, token_str), e)} => {
@@ -119,6 +118,6 @@ pub fn print_all(diagnostics: &[Diagnostic], file: &File) {
                 let config = &short_cfg;
                 (diag, config)
             };
-        emit(&mut stream, config, &file.file_db, &diag).unwrap() // TODO
+        emit(&mut stream, config, &file.file_db, &diag).unwrap()
     }
 }

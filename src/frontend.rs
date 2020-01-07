@@ -59,23 +59,6 @@ pub fn remove_comments(text: &str) -> String {
     return output;
 }
 
-// Bad things:
-// uninitialized variable
-// repeated definition
-// undeclared variable
-// undeclared function
-// dead-code return
-// no return
-// TODO declared variable must not be void
-
-// first pass -> expression types
-// second pass -> valid expression types in statements
-
-// mismatched types (expressions, variables, returns, parameters)
-
-// TODO:
-// no return (especially dead return: if(false) return) / return only in some cases
-
 type Env<'a> = ScopedMap<Ident, Type>;
 type FEnv<'a> = HashMap<Ident, (Type, Vec<Type>)>;
 type Diags = Vec<diag::Diagnostic>;
@@ -92,15 +75,11 @@ fn get_unary_op_typeval(op: &UnaryOp, typeval: &ExpTypeVal) -> ExpTypeVal {
 }
 
 fn get_binary_op_typeval(op: &BinaryOp, ltypeval: &ExpTypeVal, rtypeval: &ExpTypeVal) -> ExpTypeVal {
-    // TODO: handle string concatenation
-    // TODO: handle div by zero
     match (op, ltypeval, rtypeval) {
         (BinaryOp::Eq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
         (BinaryOp::Eq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
-//        (BinaryOp::Eq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l == *r)),
         (BinaryOp::Neq,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
         (BinaryOp::Neq,  ExpTypeVal::Int(Some(l)),   ExpTypeVal::Int(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
-//        (BinaryOp::Neq,  ExpTypeVal::Str(Some(l)), ExpTypeVal::Str(Some(r))) => ExpTypeVal::Bool(Some(*l != *r)),
         (BinaryOp::Or,  ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l || *r)),
         (BinaryOp::And, ExpTypeVal::Bool(Some(l)), ExpTypeVal::Bool(Some(r))) => ExpTypeVal::Bool(Some(*l && *r)),
 
@@ -194,7 +173,6 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
                             })
                         }
                     }
-                    // TODO possible further optimization here..
                     Some(ExpTypeVal::from_type(fn_type))
                 }
             }
