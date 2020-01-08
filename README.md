@@ -1,3 +1,13 @@
+1) Frontend: src/frontend.rs
+2) Backend: src/backend.rs
+    użycie rejestrów i phi zamiast alloc: TAK
+5) Optymalizacje:
+    Na frontendzie jest constant-folding (bez zaglądania do zmiennych), które jest tam używane do sprawdzenia return-ów oraz na backendzie do ominięcia trywialnych if-ów, typu if (5 > 3 || false) {...}.
+    Dodatkowo użycie LLVM API do generacji kodu w postaci SSA de facto implikuje upraszczanie lokalnych wyrażeń, które dają się policzyć w czasie kompilacji (constant folding z zaglądaniem do zmiennych).
+
+6) Rozszerzenia:
+    Jak narazie żadne.
+
 Używane biblioteki:
 
     Generacja parsera:
