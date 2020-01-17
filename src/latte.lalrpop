@@ -51,8 +51,16 @@ GBoolean: bool = {
     "false" => false,
 }
 
+// TODO: bug here: printString("\\a\\n\n\tb\"");
+// It won't be handled correctly because of naive removal of escape sequences.
 GString: String = {
-    <l:@L> <s:r#""([^"\\]|\\")*""#> <r:@R> => s[1..s.len()-1].replace(r#"\""#, r#"""#),
+    <l:@L> <s:r#""([^"\\]|\\"|\\n|\\t|\\)*""#> <r:@R> => {
+        s[1..s.len()-1]
+        .replace(r#"\\"#, r#"\"#)
+        .replace(r#"\n"#, "\n")
+        .replace(r#"\t"#, "\t")
+        .replace(r#"\""#, r#"""#)
+    }
 }
 
 // Left Associative Expression Macro
