@@ -71,7 +71,7 @@ fn main() {
         .unwrap_or_else(|| die(&format!("expected 1 argument, got {}", args.len()-1)));
 
     let file = File::new(path)
-        .unwrap_or_else(|e| die(&format!("error while reading file: {}", e)));
+        .unwrap_or_else(|e| die(&format!("error while reading file {}: {}", path, e)));
 
     match process(&file, &Path::new(path)) {
         Err(diags) => {
