@@ -52,7 +52,7 @@ GBoolean: bool = {
 }
 
 GString: String = {
-    <l:@L> <s:r#""([^,",\\]|\\")*""#> <r:@R> => s[1..s.len()-1].replace(r#"\""#, r#"""#),
+    <l:@L> <s:r#""([^"\\]|\\")*""#> <r:@R> => s[1..s.len()-1].replace(r#"\""#, r#"""#),
 }
 
 // Left Associative Expression Macro
