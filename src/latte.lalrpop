@@ -94,9 +94,9 @@ GExpAdd = LAExpMacro<GOperandAdd, GExpMul>;
 GExpMul = LAExpMacro<GOperandMul, GExpUnary>;
 
 GExpUnary: Box<ExpNode> = {
-    <l:@L> "!" <e:GExpAtom> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Not, e),
-    <l:@L> "-" <e:GExpAtom> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Neg, e),
-    <GExpAtom> => <>
+    <l:@L> "!" <e:GExpUnary> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Not, e),
+    <l:@L> "-" <e:GExpUnary> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Neg, e),
+    <GExpAtom>  => <>
 }
 
 GExpAtom: Box<ExpNode> = {
@@ -105,7 +105,7 @@ GExpAtom: Box<ExpNode> = {
     <l:@L> <e:GString>  <r:@R> => ExpNode::new(l, r, Exp::Str(e)),
     <l:@L> <n:GIdent>   <r:@R> => ExpNode::new(l, r, Exp::Var(n)),
     <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => ExpNode::new(l, r, Exp::Call(n, a)),
-    "(" <GExpOr> ")" => <>,
+    "(" <GExp> ")" => <>,
 }
 
 // *** TOP LEVEL ***
