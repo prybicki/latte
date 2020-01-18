@@ -1,0 +1,14 @@
+
+int main() {
+    int a = 1;
+    int b = 3;
+    while (a < b) {
+        a = a + 5;
+        while (b > a) {
+            b = b - 2;
+            a++;
+        }
+        b--;
+    }
+    return 0;
+}

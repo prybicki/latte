@@ -61,11 +61,12 @@ def test_negative(base):
 
 
 if __name__ == '__main__':
-	test_positive('./lattests/good')
-	test_negative('./lattests/bad')
-	test_negative('./mrjp-tests/bad/semantic/')
-	test_negative('./mrjp-tests/bad/runtime/')
-	test_negative('./mrjp-tests/bad/infinite_loop/')
-	test_positive('./mrjp-tests/good/basic/')
+	# test_positive('./lattests/good')
+	# test_negative('./lattests/bad')
+	# test_negative('./lattests/students/bad/runtime/')
+	# test_negative('./lattests/students/bad/infinite_loop/')
+
+	test_negative('./lattests/students/bad/semantic/')
+	# test_positive('./lattests/students/good/basic/')
 
 

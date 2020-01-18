@@ -1,0 +1,18 @@
+
+int main() {
+    int a = 1;
+    int b = 1;
+    boolean c;
+
+    while (a == b) {
+        a++;
+        b++;
+
+        if (a < b) {
+            c = true;
+        }
+    }
+
+    return 0;
+}
+
