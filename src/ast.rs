@@ -183,6 +183,10 @@ impl StmtNode {
     pub fn new(l: usize, r: usize, stmt: Stmt) -> Box<StmtNode> {
         Box::new(StmtNode {span: Span(l, r), stmt, will_return: None})
     }
+
+    pub fn block(stmt: Box<StmtNode>) -> Box<StmtNode> {
+        StmtNode::new(stmt.span.0, stmt.span.1, Stmt::BStmt(vec![stmt]))
+    }
 }
 
 impl FnDef {

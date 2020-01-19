@@ -59,7 +59,7 @@ fn panic_hook(info: &PanicInfo) {
 }
 
 fn main() {
-    std::panic::set_hook(Box::new(panic_hook));
+//    std::panic::set_hook(Box::new(panic_hook));
     fn die(msg: &str) -> ! {
         eprintln!("ERROR\n");
         eprintln!("{}", msg);

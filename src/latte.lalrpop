@@ -163,15 +163,15 @@ GStmt: Box<StmtNode> = {
 }
 
 GOpenStmt: Box<StmtNode> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => StmtNode::new(l, r, Stmt::Cond(c,  t, None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => StmtNode::new(l, r, Stmt::Cond(c,  t, None)),
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => StmtNode::new(l, r, Stmt::Cond(c,  t, Some(f))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => StmtNode::new(l, r, Stmt::While(c, t)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GSimpleStmt> <r:@R>                          => StmtNode::new(l, r, Stmt::Cond(c,  StmtNode::block(t), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                            => StmtNode::new(l, r, Stmt::Cond(c,  StmtNode::block(t), None)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GOpenStmt> <r:@R>     => StmtNode::new(l, r, Stmt::Cond(c,  StmtNode::block(t), Some(StmtNode::block(f)))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GOpenStmt> <r:@R>                         => StmtNode::new(l, r, Stmt::While(c, StmtNode::block(t))),
 }
 
 GClosedStmt: Box<StmtNode> = {
-    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => StmtNode::new(l, r, Stmt::Cond(c, t, Some(f))),
-    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => StmtNode::new(l, r, Stmt::While(c, t)),
+    <l:@L> "if" "(" <c:GExp> ")" <t:GClosedStmt> "else" <f:GClosedStmt> <r:@R> => StmtNode::new(l, r, Stmt::Cond(c,  StmtNode::block(t), Some(StmtNode::block(f)))),
+    <l:@L> "while" "(" <c:GExp> ")" <t:GClosedStmt> <r:@R>                     => StmtNode::new(l, r, Stmt::While(c, StmtNode::block(t))),
     <GSimpleStmt> => <>,
 }
 
