@@ -4,12 +4,12 @@
     - Trivially true branch not treated as return
         ./mrjp-tests/good/basic/void_return.lat
 
-
-
 FIXED:
 - Something wrong with the comments?:
     ./mrjp-tests/good/basic/escaped_string.lat
     ./mrjp-tests/good/basic/fibonacci.lat
+    
+- Declaration in if/else/while statment.
 
 - Unable to parse --1
     ./mrjp-tests/good/basic/negation.lat

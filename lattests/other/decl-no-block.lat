@@ -4,6 +4,7 @@ int f(int x) {
 }
 
 int main() {
+    string x = "OK";
 
     if (f(2)>2)
         printString("A kuku");
