@@ -10,5 +10,7 @@ int main() {
         }
         b--;
     }
+    printInt(a);
+    printInt(b);
     return 0;
 }

@@ -11,6 +11,9 @@ int main() {
         if (a < b) {
             c = true;
         }
+
+        if (a == 10)
+            b = 1;
     }
 
     return 0;

@@ -48,6 +48,13 @@ def test_positive(base):
 			print('{}'.format(open(path).read()))
 			print('{} ERROR <=========================================='.format(path))
 
+		ll = path.replace('.lat', '.ll')
+		bc = path.replace('.lat', '.bc')
+		if os.path.exists(ll):
+			os.remove(ll)
+		if os.path.exists(bc):
+			os.remove(bc)
+
 
 def test_negative(base):
 	compiled = {}
@@ -59,6 +66,13 @@ def test_negative(base):
 			print('{}'.format(open(path).read()))
 			print('{} ERROR <=========================================='.format(path))
 
+		ll = path.replace('.lat', '.ll')
+		bc = path.replace('.lat', '.bc')
+		if os.path.exists(ll):
+			os.remove(ll)
+		if os.path.exists(bc):
+			os.remove(bc)
+
 
 if __name__ == '__main__':
 	# 100% correct seen here:
@@ -66,11 +80,10 @@ if __name__ == '__main__':
 	test_negative('./lattests/bad')
 	test_negative('./lattests/students/bad/semantic/')
 	test_negative('./lattests/students/bad/runtime/')
-	test_negative('./lattests/students/bad/infinite_loop/')
 	test_positive('./lattests/students/good/basic/')
+	test_positive('./lattests/other')
 
 	# Lot's of phi errors
-	# test_positive('./lattests/other')
 
 	# Return checker problems
 

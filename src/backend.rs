@@ -275,6 +275,7 @@ impl<'llvm> Backend<'llvm> {
         if !then_returns_if_entered {
             self.bd.build_unconditional_branch(&cont_block);
         }
+        let then_last_block = self.bd.get_insert_block().unwrap();
         // expect to know the same set of variables after compiling true statment, possibly with different values
         assert!(self.venv.keys().eq(pred_venv.keys()));
 
@@ -297,6 +298,7 @@ impl<'llvm> Backend<'llvm> {
             // remember variables
             else_venv = Some(self.venv.clone());
         }
+        let else_last_block = self.bd.get_insert_block().unwrap();
 
         // cont block is necessary
         if !node_will_return {
@@ -313,13 +315,13 @@ impl<'llvm> Backend<'llvm> {
 
                 if !then_returns_if_entered {
                     let then_val = then_venv.get(var).unwrap();
-                    entries.push((then_val, &then_block));
+                    entries.push((then_val, &then_last_block));
 
                 }
 
                 if fstmt.is_some() && !else_returns_if_entered {
                     let else_val = else_venv.as_ref().unwrap().get(var).unwrap();
-                    entries.push((else_val, &else_block));
+                    entries.push((else_val, &else_last_block));
                 }
 
                 let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
@@ -358,13 +360,15 @@ impl<'llvm> Backend<'llvm> {
             Stmt::Incr(ident) => {
                 let var = self.venv.get(ident).unwrap().into_int_value();
                 let one = self.llvm.i32_type().const_int(1, false);
-                let val = self.bd.build_int_add(var, one, "").into();
+                let val: BasicValueEnum = self.bd.build_int_add(var, one, "").into();
+                val.set_name(ident);
                 self.venv.replace_topmost(ident.clone(), val);
             }
             Stmt::Decr(ident) => {
                 let var = self.venv.get(ident).unwrap().into_int_value();
                 let one = self.llvm.i32_type().const_int(1, false);
-                let val = self.bd.build_int_sub(var, one, "").into();
+                let val: BasicValueEnum = self.bd.build_int_sub(var, one, "").into();
+                val.set_name(ident);
                 self.venv.replace_topmost(ident.clone(), val);
             }
             Stmt::EStmt(exp_node) => {
@@ -410,7 +414,7 @@ impl<'llvm> Backend<'llvm> {
                 {
                     self.bd.position_at_end(&cond_block);
 
-                    if !body_returns {
+                    if !while_returns {
                         // build phi placeholders
                         for var in self.tenv.keys() {
                             let ttype = self.get_llvm_basic_type(self.tenv.get(var).unwrap()).unwrap();
@@ -439,14 +443,15 @@ impl<'llvm> Backend<'llvm> {
                         self.bd.build_unconditional_branch(&cond_block);
                     }
                 }
+                let body_last_block = self.bd.get_insert_block().unwrap();
 
                 if !while_returns {
                     // build actual phi values in cond block
-                    for var in self.tenv.keys() {
+                    for var in phi_venv.keys() {
                         let phi = phi_venv.get(var).unwrap();
                         let pred_val = pred_venv.get(var).unwrap();
                         let body_val = self.venv.get(var).unwrap();
-                        phi.add_incoming(&[(pred_val, &pred_block), (body_val, &body_block)]);
+                        phi.add_incoming(&[(pred_val, &pred_block), (body_val, &body_last_block)]);
                         self.venv.replace_topmost(var.clone(), phi.as_basic_value());
                     }
                     self.bd.position_at_end(&cont_block);
