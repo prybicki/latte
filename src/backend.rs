@@ -79,15 +79,18 @@ impl<'llvm> Backend<'llvm> {
     fn compile_bin_exp(&mut self, op: &BinaryOp, lexp: &ExpNode, rexp: &ExpNode) -> BasicValueEnum<'llvm> {
         let ltv = lexp.typeval.as_ref().unwrap();
         let rtv = rexp.typeval.as_ref().unwrap();
-        // string evaluation
-        if let (BinaryOp::Add, ExpTypeVal::Str(_), ExpTypeVal::Str(_)) = (op, ltv, rtv) {
+        // string evaluation, different path because lhs/rhs value is a pointer, not int
+        if let (_, ExpTypeVal::Str(_), ExpTypeVal::Str(_)) = (op, ltv, rtv) {
             let lval = self.compile_exp(lexp).unwrap().into_pointer_value();
             let rval = self.compile_exp(rexp).unwrap().into_pointer_value();
-
-            let fnval = *self.fenv.get("__latc_concat_str").unwrap();
+            let fnval = match op {
+                BinaryOp::Add => *self.fenv.get("__latc_concat_str").unwrap(),
+                BinaryOp::Eq => *self.fenv.get("__latc_compare_str").unwrap(),
+                _ => panic!("unexpected operator for string operands")
+            };
             let argsvals: Vec<BasicValueEnum> = vec![lval.into(), rval.into()];
             let result = self.bd.build_call(fnval, &argsvals, "").try_as_basic_value();
-            result.left().expect("got void from __latc_concat_str?")
+            result.left().expect("got void from __latc_*_str builtin")
         }
         else {
             // lazy evaluation
@@ -497,6 +500,7 @@ impl<'llvm> Backend<'llvm> {
         self.compile_fndecl(&"printInt".to_owned(), &(Type::Void, vec![Type::Int]));
         self.compile_fndecl(&"printString".to_owned(), &(Type::Void, vec![Type::Str]));
         self.compile_fndecl(&"__latc_concat_str".to_owned(), &(Type::Str, vec![Type::Str, Type::Str]));
+        self.compile_fndecl(&"__latc_compare_str".to_owned(), &(Type::Bool, vec![Type::Str, Type::Str]));
 
         for fndef in &prog.functions {
             self.compile_fndecl(&fndef.ident, &fndef.get_signature());

@@ -33,8 +33,7 @@ char* readString() {
     return strcpy(result, buffer);
 }
 
-char* __latc_concat_str(char* a, char* b)
-{
+char* __latc_concat_str(char* a, char* b) {
     int len_a = strlen(a);
     int len_b = strlen(b);
     int len_ab = 1 + len_a + len_b;
@@ -42,4 +41,9 @@ char* __latc_concat_str(char* a, char* b)
     strcpy(result, a);
     strcpy(result + len_a, b);
     return result;
+}
+
+#include <stdbool.h>
+bool __latc_compare_str(char* a, char* b) {
+    return strcmp(a, b) == 0;
 }
