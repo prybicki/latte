@@ -216,16 +216,21 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
 fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut Env, diags: &mut Diags) {
     stmt_node.will_return = match &mut stmt_node.stmt {
         Stmt::BStmt(stmts) => {
+            let mut block_returns = false;
+            let mut reachable_stmts = vec![];
             env.push_scope();
-            for stmt_node in stmts.iter_mut() {
-                verify_stmt(stmt_node, fn_type,fenv, env, diags)
+            for mut stmt_node in stmts.drain(..) {
+                verify_stmt(&mut *stmt_node, fn_type,fenv, env, diags);
+                let stmt_returned = stmt_node.will_return.unwrap();
+                reachable_stmts.push(stmt_node);
+                if stmt_returned {
+                    block_returns = true;
+                    break;
+                }
             }
             env.pop_scope();
-
-            match stmts.last() {
-                Some(stmt) => stmt.will_return,
-                None => Some(false)
-            }
+            *stmts = reachable_stmts;
+            Some(block_returns)
         },
         Stmt::Decl(decls) => {
             verify_decls(decls, fenv, env, diags);
@@ -280,14 +285,14 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
         Stmt::Cond(cond, tstmt, fstmt) => {
             verify_exp(cond, fenv, env, diags);
 
+            verify_stmt(tstmt, fn_type, fenv, env, diags);
+            if let Some(fstmt) = fstmt {
+                verify_stmt(fstmt, fn_type, fenv, env, diags);
+            }
+
             let ctv = cond.typeval.as_ref().unwrap();
             match ctv {
                 ExpTypeVal::Bool(condval) => {
-                    verify_stmt(tstmt, fn_type, fenv, env, diags);
-                    if let Some(fstmt) = fstmt {
-                        verify_stmt(fstmt, fn_type, fenv, env, diags);
-                    }
-
                     match (&condval, &fstmt) {
                         (Some(true), _) => tstmt.will_return,
                         (Some(false), Some(_)) => fstmt.as_ref().unwrap().will_return,
@@ -306,11 +311,19 @@ fn verify_stmt(stmt_node: &mut StmtNode, fn_type: &Type, fenv: &FEnv, env: &mut 
             verify_stmt(body, fn_type, fenv, env, diags);
 
             let ctv = cond.typeval.as_ref().unwrap();
-            if !ctv.has_type(&Type::Bool) {
-                diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv, cond.span));
+            match &ctv {
+                ExpTypeVal::Bool(condval) => {
+                    match &condval {
+                        // if while(true), this will either loop infinitely or return
+                        Some(true) => Some(true),
+                        _ => Some(false)
+                    }
+                }
+                _ => {
+                    diags.push(diag::gen_invalid_expression_type(&Type::Bool, &ctv, cond.span));
+                    Some(false)
+                }
             }
-
-            Some(false)
         },
         Stmt::EStmt(exp) => {
             verify_exp(exp, fenv, env, diags);

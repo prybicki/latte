@@ -42,6 +42,8 @@ fn process(file: &File, path: &Path) -> Result<(), Vec<diag::Diagnostic>> {
         return Err(diags);
     }
 
+//    println!("{:?}", ast);
+
     if let Err(msg) = backend::compile(&ast, path) {
         return Err(vec![diag::Diagnostic{
             message: msg.to_string(),

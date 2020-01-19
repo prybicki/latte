@@ -397,6 +397,7 @@ impl<'llvm> Backend<'llvm> {
                 let pred_block = self.bd.get_insert_block().unwrap();
                 let pred_venv = self.venv.clone();
 
+                let while_returns = node.will_return.unwrap();
                 let body_returns = body.will_return.unwrap();
                 let cond_block = self.llvm.append_basic_block(fnval, "loop_cond");
                 let body_block = self.llvm.append_basic_block(fnval, "loop_body");
@@ -420,8 +421,14 @@ impl<'llvm> Backend<'llvm> {
                             self.venv.replace_topmost(var.clone(), phi.as_basic_value());
                         }
                     }
-                    let cond_val = self.compile_exp(cond).unwrap().into_int_value();
-                    self.bd.build_conditional_branch(cond_val, &body_block, &cont_block);
+                    // if frontend is sure that this loop returns, jump unconditionally
+                    if while_returns {
+                        self.bd.build_unconditional_branch(&body_block);
+                    }
+                    else {
+                        let cond_val = self.compile_exp(cond).unwrap().into_int_value();
+                        self.bd.build_conditional_branch(cond_val, &body_block, &cont_block);
+                    }
                 }
 
                 // build body
@@ -433,7 +440,7 @@ impl<'llvm> Backend<'llvm> {
                     }
                 }
 
-                if !body_returns {
+                if !while_returns {
                     // build actual phi values in cond block
                     for var in self.tenv.keys() {
                         let phi = phi_venv.get(var).unwrap();
@@ -531,6 +538,7 @@ pub fn compile(prog: &Program, path: &Path) -> Result<(), LLVMString> {
     backend.md.link_in_module(rt_mod).unwrap();
 
     // handle result
+//    println!("IGNORING ANY LLVM ERRORS");
     match backend.md.verify() {
         Ok(_) => {
             backend.md.print_to_file(dir_path.join(Path::new(&(mod_name.clone() + ".ll"))))?;

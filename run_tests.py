@@ -62,13 +62,16 @@ def test_negative(base):
 
 if __name__ == '__main__':
 	# 100% correct seen here:
-	# test_positive('./lattests/good')
-	# test_negative('./lattests/bad')
-	# test_negative('./lattests/students/bad/semantic/')
-	# test_negative('./lattests/students/bad/runtime/')
-	# test_negative('./lattests/students/bad/infinite_loop/')
+	test_positive('./lattests/good')
+	test_negative('./lattests/bad')
+	test_negative('./lattests/students/bad/semantic/')
+	test_negative('./lattests/students/bad/runtime/')
+	test_negative('./lattests/students/bad/infinite_loop/')
+	test_positive('./lattests/students/good/basic/')
 
-	test_positive('./lattests/other')
-	# test_positive('./lattests/students/good/basic/')
+	# Lot's of phi errors
+	# test_positive('./lattests/other')
+
+	# Return checker problems
 
 
