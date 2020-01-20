@@ -5,6 +5,12 @@ use std::convert::TryInto;
 pub struct Program {
     pub span: Span,
     pub functions:  Vec<FnDef>,
+    pub classes: Vec<ClassDef>,
+}
+
+pub enum TopDef {
+    Fn(FnDef),
+    Class(ClassDef),
 }
 
 #[derive(Debug)]
@@ -14,6 +20,13 @@ pub struct FnDef {
     pub ident: Ident,
     pub params: Vec<VarDecl>,
     pub body: Box<StmtNode>,
+}
+
+#[derive(Debug)]
+pub struct ClassDef {
+    pub span: Span,
+    pub ident: Ident,
+    pub fields: Vec<VarDecl>,
 }
 
 #[derive(Debug)]
@@ -42,6 +55,7 @@ pub enum ExpTypeVal {
     Int(Option<i32>),
     Bool(Option<bool>),
     Str(Option<String>),
+    Struct(Ident), // value not supported
     Void,
     Invalid,
 }
@@ -56,6 +70,7 @@ impl TryInto<Type> for &ExpTypeVal {
             ExpTypeVal::Int(_) => Ok(Type::Int),
             ExpTypeVal::Bool(_) => Ok(Type::Bool),
             ExpTypeVal::Str(_) => Ok(Type::Str),
+            ExpTypeVal::Struct(ident) => Ok(Type::Struct(ident.clone()))
         }
     }
 }
@@ -67,6 +82,7 @@ impl ExpTypeVal {
             Type::Bool    => ExpTypeVal::Bool(None),
             Type::Str     => ExpTypeVal::Str(None),
             Type::Void    => ExpTypeVal::Void,
+            Type::Struct(ident) => ExpTypeVal::Struct(ident.clone())
         }
     }
 
@@ -96,6 +112,18 @@ pub struct ExpNode {
 }
 
 #[derive(Debug)]
+pub enum Field {
+    Direct(Ident, Ident),
+    Indirect(Box<Field>, Ident),
+}
+
+#[derive(Debug)]
+pub enum MemLoc {
+    Var(Ident),
+    Field(Box<Field>)
+}
+
+#[derive(Debug)]
 pub enum Exp {
     Unary(UnaryOp, Box<ExpNode>),
     Binary(Box<ExpNode>, BinaryOp, Box<ExpNode>),
@@ -103,7 +131,9 @@ pub enum Exp {
     Int(i32),
     Bool(bool),
     Str(String),
-    Var(Ident),
+    Obj(MemLoc),
+    Null(Ident),
+    New(Ident),
 }
 
 #[derive(Debug)]
@@ -117,9 +147,9 @@ pub struct StmtNode {
 pub enum Stmt {
     BStmt(Vec<Box<StmtNode>>),
     Decl(VarDecl),
-    Ass(Ident, Box<ExpNode>),
-    Incr(Ident),
-    Decr(Ident),
+    Ass(MemLoc, Box<ExpNode>),
+    Incr(MemLoc),
+    Decr(MemLoc),
     Ret(Box<ExpNode>),
     VRet,
     Cond(Box<ExpNode>, Box<StmtNode>, Option<Box<StmtNode>>),
@@ -136,8 +166,9 @@ pub type FnSignature = (Type, Vec<Type>);
 #[derive(Debug,Clone,Copy)]
 pub struct Span(pub usize, pub usize);
 
-#[derive(Debug,Clone,Copy,PartialEq)]
+#[derive(Debug,Clone,PartialEq)]
 pub enum Type {
+    Struct(Ident),
     Int,
     Bool,
     Str,
@@ -191,7 +222,7 @@ impl StmtNode {
 
 impl FnDef {
     pub fn get_signature(&self) -> FnSignature {
-        (self.type_spec.ttype, self.params.iter().map(|VarDecl {type_spec: ts, ..}| ts.ttype).collect())
+        (self.type_spec.ttype.clone(), self.params.iter().map(|VarDecl {type_spec: ts, ..}| ts.ttype.clone()).collect())
     }
 }
 
@@ -260,6 +291,7 @@ impl Display for ExpTypeVal {
             ExpTypeVal::Str(_) => write!(f, "string"),
             ExpTypeVal::Void => write!(f, "void"),
             ExpTypeVal::Invalid => write!(f, "<invalid>"),
+            ExpTypeVal::Struct(ident) => write!(f, "struct {}", ident),
         }
     }
 }
@@ -271,6 +303,7 @@ impl Display for Type {
             Type::Bool => write!(f, "boolean"),
             Type::Str => write!(f, "string"),
             Type::Void => write!(f, "void"),
+            Type::Struct(ident) => write!(f, "struct {}", ident),
         }
     }
 }

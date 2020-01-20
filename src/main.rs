@@ -1,7 +1,8 @@
 pub mod ast;
 pub mod diag;
-pub mod frontend;
-pub mod backend;
+//pub mod frontend;
+//pub mod backend;
+pub mod utils;
 pub mod scoped_map;
 
 #[macro_use] extern crate lalrpop_util;
@@ -30,26 +31,26 @@ impl File {
 }
 
 fn process(file: &File, path: &Path) -> Result<(), Vec<diag::Diagnostic>> {
-    let stripped = frontend::remove_comments(file.get_content());
+    let stripped = utils::remove_comments(file.get_content());
 
     let mut ast = match latte::GProgramParser::new().parse(&stripped) {
         Err(e) => return Err(vec![diag::gen_from_parse_error(e)]),
         Ok(v) => v
     };
 
-    let diags = frontend::verify_program(&mut ast);
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-
-//    println!("{:?}", ast);
-
-    if let Err(msg) = backend::compile(&ast, path) {
-        return Err(vec![diag::Diagnostic{
-            message: msg.to_string(),
-            details: None
-        }]);
-    }
+//    let diags = frontend::verify_program(&mut ast);
+//    if !diags.is_empty() {
+//        return Err(diags);
+//    }
+//
+////    println!("{:?}", ast);
+//
+//    if let Err(msg) = backend::compile(&ast, path) {
+//        return Err(vec![diag::Diagnostic{
+//            message: msg.to_string(),
+//            details: None
+//        }]);
+//    }
 
     return Ok(())
 }

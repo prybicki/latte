@@ -4,65 +4,9 @@ use crate::scoped_map::ScopedMap;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-pub fn remove_comments(text: &str) -> String {
-    #[derive(Debug)]
-    enum PrimaryState {
-        InCode,
-        AfterForwardSlash,
-        InSingleLineComment,
-        InMultiLineComment,
-        InMultiLineAfterAsterisk,
-    };
-    #[derive(Debug)]
-    enum SecondaryState {
-        NotInString,
-        InString,
-        InStringAfterEscape,
-    };
-    let mut s1 = PrimaryState::InCode;
-    let mut s2 = SecondaryState::NotInString;
-    let mut output = String::new();
-    for ch in text.chars() {
-        match (&s2, ch) {
-            (SecondaryState::NotInString, '"')      => s2 = SecondaryState::InString,
-            (SecondaryState::InString, '\\') => s2 = SecondaryState::InStringAfterEscape,
-            (SecondaryState::InStringAfterEscape, _) => s2 = SecondaryState::InString,
-            (SecondaryState::InString, '"' ) => s2 = SecondaryState::NotInString,
-            (_, _) => ()
-        };
-
-        if let SecondaryState::NotInString = s2 {
-            match (&s1, ch) {
-                (PrimaryState::InCode, '#') => s1 = PrimaryState::InSingleLineComment,
-                (PrimaryState::InCode, '/') => s1 = PrimaryState::AfterForwardSlash,
-                (PrimaryState::AfterForwardSlash, '/') => s1 = PrimaryState::InSingleLineComment,
-                (PrimaryState::AfterForwardSlash, '*') => s1 = PrimaryState::InMultiLineComment,
-                (PrimaryState::AfterForwardSlash, _) => {
-                    s1 = PrimaryState::InCode;
-                    output.push('/');
-                }
-                (PrimaryState::InSingleLineComment, '\n') => s1 = PrimaryState::InCode,
-                (PrimaryState::InMultiLineComment, '*') => s1 = PrimaryState::InMultiLineAfterAsterisk,
-                (PrimaryState::InMultiLineAfterAsterisk, '/') => {
-                    s1 = PrimaryState::InCode;
-                    continue;
-                },
-                (PrimaryState::InMultiLineAfterAsterisk, _) => s1 = PrimaryState::InMultiLineComment,
-                (_,_) => (),
-            }
-        }
-        output.push(match s1 {
-            PrimaryState::InCode => ch,
-            _ => if ch == '\n' { '\n' } else { ' ' },
-        });
-    }
-    return output;
-}
-
 type Env<'a> = ScopedMap<Ident, Type>;
 type FEnv<'a> = HashMap<Ident, (Type, Vec<Type>)>;
 type Diags = Vec<diag::Diagnostic>;
-
 
 fn get_unary_op_typeval(op: &UnaryOp, typeval: &ExpTypeVal) -> ExpTypeVal {
     match (op, typeval) {
@@ -192,6 +136,8 @@ fn verify_exp(exp_node: &mut ExpNode, fenv: &FEnv, env: &Env, diags: &mut Diags)
         Exp::Int(v) => Some(ExpTypeVal::Int(Some(*v))),
         Exp::Bool(v)=> Some(ExpTypeVal::Bool(Some(*v))),
         Exp::Str(v)=>  Some(ExpTypeVal::Str(Some(v.clone()))),
+        Exp::Field(_, _) => {unimplemented!()}
+        Exp::New(_) => {unimplemented!()}
     }
 }
 
@@ -206,7 +152,7 @@ fn verify_decls(decls: &mut VarDecl, fenv: &FEnv, env: &mut Env, diags: &mut Dia
         }
 
         // add variable disregarding init exp type mismatch
-        match env.insert_into_top_scope(var.ident.clone(), decls.type_spec.ttype) {
+        match env.insert_into_top_scope(var.ident.clone(), decls.type_spec.ttype.clone()) {
             Some(_) => diags.push(diag::gen_multiple_var_decl(&var.ident, var.span)),
             None => ()
         }

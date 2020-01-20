@@ -75,7 +75,7 @@ RAExpMacro<Op, NextTier>: Box<ExpNode> = {
     NextTier,
 };
 
-GList<T, Sep>: Vec<T> = {
+GListMaybeEmpty<T, Sep>: Vec<T> = {
     <v:(<T> Sep)*> <e:T?> => match e {
         None => v,
         Some(e) => {
@@ -83,6 +83,22 @@ GList<T, Sep>: Vec<T> = {
             v.push(e);
             v
         }
+    }
+};
+
+GListNotEmptyOpen<T, Sep>: Vec<T> = {
+    <v:(<T> Sep)*> <e:T> => {
+        let mut v = v;
+        v.push(e);
+        v
+    }
+};
+
+GListNotEmptyClosed<T, Sep>: Vec<T> = {
+    <v:(<T> Sep)*> <e:(<T> Sep)> => {
+        let mut v = v;
+        v.push(e);
+        v
     }
 };
 
@@ -96,28 +112,72 @@ GExpMul = LAExpMacro<GOperandMul, GExpUnary>;
 GExpUnary: Box<ExpNode> = {
     <l:@L> "!" <e:GExpUnary> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Not, e),
     <l:@L> "-" <e:GExpUnary> <r:@R> => ExpNode::new_un(l, r, UnaryOp::Neg, e),
-    <GExpAtom>  => <>
-}
+    <GExpAtom>  => <>,
+    <GExpLiteral> => <>,
+};
 
-GExpAtom: Box<ExpNode> = {
+GExpLiteral: Box<ExpNode> = {
     <l:@L> <e:GInteger> <r:@R> => ExpNode::new(l, r, Exp::Int(e)),
     <l:@L> <e:GBoolean> <r:@R> => ExpNode::new(l, r, Exp::Bool(e)),
     <l:@L> <e:GString>  <r:@R> => ExpNode::new(l, r, Exp::Str(e)),
-    <l:@L> <n:GIdent>   <r:@R> => ExpNode::new(l, r, Exp::Var(n)),
-    <l:@L> <n:GIdent> "(" <a:GList<GExp, ",">> ")" <r:@R> => ExpNode::new(l, r, Exp::Call(n, a)),
+    <l:@L> "(" <typename:GIdent> r#"\)\s*null"# <r:@R> => ExpNode::new(l, r, Exp::Null(typename)),
+};
+
+GField: Field = {
+    <obj:GIdent> "." <field:GIdent> => Field::Direct(obj, field),
+    <obj:GField> "." <field:GIdent> => Field::Indirect(Box::new(obj), field),
+};
+
+GMemLoc: MemLoc = {
+    <ident:GIdent> => MemLoc::Var(ident),
+    <GField> => MemLoc::Field(Box::new(<>)),
+};
+
+GExpAtom: Box<ExpNode> = {
+    <l:@L> <mem:GMemLoc> <r:@R> => ExpNode::new(l, r, Exp::Obj(mem)),
+    <l:@L> <n:GIdent> "(" <a:GListMaybeEmpty<GExp, ",">> ")" <r:@R> => ExpNode::new(l, r, Exp::Call(n, a)),
+    <l:@L> "new" <typename:GIdent> <r:@R> => ExpNode::new(l, r, Exp::New(typename)),
     "(" <GExp> ")" => <>,
-}
+};
 
 // *** TOP LEVEL ***
 
+GTopDef: TopDef = {
+    <GFnDef> => TopDef::Fn(<>),
+    <GClassDef> => TopDef::Class(<>),
+};
+
+GFnDef: FnDef = {
+    <l:@L> <t:GTypeOrVoid> <n:GIdent> "(" <p:GListMaybeEmpty<GDeclSingle, ",">> ")" <b:GBlock> <r:@R> => {
+        FnDef {span: Span(l, r), type_spec: t, ident: n, params: p, body: b}
+    }
+};
+
+GClassDef: ClassDef = {
+    <l:@L> "class" <i:GIdent> "{" <f:GListNotEmptyClosed<GDeclSingle, ";">> "}" <r:@R> => {
+        ClassDef { span: Span(l, r), ident: i, fields: f }
+    }
+}
+
 pub GProgram: Program = {
-    <l:@L> <fs: GFnDef+> <r:@R> => Program{span: Span(l, r), functions: fs},
+    <l:@L> <topdefs: GTopDef+> <r:@R> => {
+        let mut fs = Vec::new();
+        let mut cs = Vec::new();
+        for td in topdefs {
+            match td {
+                TopDef::Fn(f) => fs.push(f),
+                TopDef::Class(c) => cs.push(c),
+            }
+        }
+        Program{span: Span(l, r), functions: fs, classes: cs}
+    }
 };
 
 GType: TypeSpecifier = {
     <l:@L> "int" <r:@R>     => TypeSpecifier::new(l, r, Type::Int),
     <l:@L> "boolean" <r:@R> => TypeSpecifier::new(l, r, Type::Bool),
     <l:@L> "string" <r:@R>  => TypeSpecifier::new(l, r, Type::Str),
+    <l:@L> <i:GIdent> <r:@R> => TypeSpecifier::new(l, r, Type::Struct(i)),
 }
 
 GVoid: TypeSpecifier = {
@@ -129,16 +189,6 @@ GTypeOrVoid: TypeSpecifier = {
     GVoid => <>
 }
 
-GParam: VarDecl = {
-    <l:@L> <t:GType> <b:GDeclBodyNoInit> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: vec![b]},
-};
-
-GFnDef: FnDef = {
-    <l:@L> <t:GTypeOrVoid> <n:GIdent> "(" <p:GList<GParam, ",">> ")" <b:GBlock> <r:@R> => {
-        FnDef {span: Span(l, r), type_spec: t, ident: n, params: p, body: b}
-    }
-};
-
 GDeclBodyNoInit: DeclBody = {
     <l:@L> <n:GIdent> <r:@R> => DeclBody {span: Span(l, r), ident: n, init: None},
 }
@@ -147,8 +197,12 @@ GDeclBody: DeclBody = {
     <l:@L> <n:GIdent> <e:("=" <GExp>)?> <r:@R> => DeclBody {span: Span(l, r), ident: n, init: e},
 }
 
+GDeclSingle: VarDecl = {
+    <l:@L> <t:GType> <b:GDeclBodyNoInit> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: vec![b]},
+};
+
 GDecls: VarDecl = {
-    <l:@L> <t:GType> <bs:GList<GDeclBody, ",">> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: bs},
+    <l:@L> <t:GType> <bs:GListNotEmptyOpen<GDeclBody, ",">> <r:@R> => VarDecl {span: Span(l, r), type_spec: t, vars: bs},
 };
 
 GBlock: Box<StmtNode> = {
@@ -176,13 +230,13 @@ GClosedStmt: Box<StmtNode> = {
 }
 
 GSimpleStmt: Box<StmtNode> = {
-    <GBlock>                                  => <>,
-    <l:@L> ";" <r:@R>                         => StmtNode::new(l, r, Stmt::BStmt(vec![])),
-    <l:@L> <e:GExp> ";" <r:@R>                => StmtNode::new(l, r, Stmt::EStmt(e)),
-    <l:@L> <d:GDecls> ";" <r:@R>              => StmtNode::new(l, r, Stmt::Decl(d)),
-    <l:@L> <n:GIdent> "=" <e:GExp> ";" <r:@R> => StmtNode::new(l, r, Stmt::Ass(n, e)),
-    <l:@L> <n:GIdent> "++" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Incr(n)),
-    <l:@L> <n:GIdent> "--" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Decr(n)),
-    <l:@L> "return" <e:GExp> ";" <r:@R>       => StmtNode::new(l, r, Stmt::Ret(e)),
-    <l:@L> "return" ";" <r:@R>                => StmtNode::new(l, r, Stmt::VRet),
+    <GBlock>                                     => <>,
+    <l:@L> ";" <r:@R>                            => StmtNode::new(l, r, Stmt::BStmt(vec![])),
+    <l:@L> <e:GExp> ";" <r:@R>                   => StmtNode::new(l, r, Stmt::EStmt(e)),
+    <l:@L> <d:GDecls> ";" <r:@R>                 => StmtNode::new(l, r, Stmt::Decl(d)),
+    <l:@L> <mem:GMemLoc> "=" <e:GExp> ";" <r:@R> => StmtNode::new(l, r, Stmt::Ass(mem, e)),
+    <l:@L> <mem:GMemLoc> "++" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Incr(mem)),
+    <l:@L> <mem:GMemLoc> "--" ";" <r:@R>         => StmtNode::new(l, r, Stmt::Decr(mem)),
+    <l:@L> "return" <e:GExp> ";" <r:@R>          => StmtNode::new(l, r, Stmt::Ret(e)),
+    <l:@L> "return" ";" <r:@R>                   => StmtNode::new(l, r, Stmt::VRet),
 }

@@ -64,6 +64,7 @@ impl<'llvm> Backend<'llvm> {
             Type::Bool => Some(self.llvm.bool_type().as_basic_type_enum()),
             Type::Str =>  Some(self.llvm.i8_type().ptr_type(AddressSpace::Generic).as_basic_type_enum()),
             Type::Void => None,
+            Type::Struct(_) => unimplemented!()
         }
     }
 
@@ -72,7 +73,8 @@ impl<'llvm> Backend<'llvm> {
             Type::Int => Some(self.llvm.i32_type().const_zero().into()),
             Type::Bool => Some(self.llvm.bool_type().const_zero().into()),
             Type::Str => Some(self.llvm.i8_type().const_array(&[self.get_llvm_default_value(&Type::Int).unwrap().into_int_value()]).into()),
-            Type::Void => None
+            Type::Void => None,
+            Type::Struct(_) => unimplemented!()
         }
     }
 
@@ -242,6 +244,8 @@ impl<'llvm> Backend<'llvm> {
                     Some(self.bd.build_gep(global_ptr, &[zero, zero], "").into())
                 }
             }
+            Exp::Field(_, _) => {unimplemented!()}
+            Exp::New(_) => {unimplemented!()}
         }
     }
 
@@ -348,7 +352,7 @@ impl<'llvm> Backend<'llvm> {
                         None => self.get_llvm_default_value(&decl.type_spec.ttype).unwrap()
                     };
                     init_val.set_name(&body.ident);
-                    self.tenv.insert_into_top_scope(body.ident.clone(), decl.type_spec.ttype);
+                    self.tenv.insert_into_top_scope(body.ident.clone(), decl.type_spec.ttype.clone());
                     self.venv.insert_into_top_scope(body.ident.clone(), init_val);
                 }
             }
@@ -470,7 +474,7 @@ impl<'llvm> Backend<'llvm> {
             let name = &param.vars.first().unwrap().ident;
             let val = fnval.get_nth_param(i as u32).unwrap();
             self.venv.insert_into_top_scope(name.clone(), val);
-            self.tenv.insert_into_top_scope(name.clone(), param.type_spec.ttype);
+            self.tenv.insert_into_top_scope(name.clone(), param.type_spec.ttype.clone());
         }
         self.bd.position_at_end(&entry);
         self.compile_stmt(&fndef.body);
@@ -552,4 +556,6 @@ pub fn compile(prog: &Program, path: &Path) -> Result<(), LLVMString> {
         },
         Err(e) => Err(e)
     }
+
+
 }
