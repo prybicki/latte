@@ -123,9 +123,9 @@ GExpLiteral: Box<ExpNode> = {
     <l:@L> "(" <typename:GIdent> r#"\)\s*null"# <r:@R> => ExpNode::new(l, r, Exp::Null(typename)),
 };
 
-GField: Field = {
-    <obj:GIdent> "." <field:GIdent> => Field::Direct(obj, field),
-    <obj:GField> "." <field:GIdent> => Field::Indirect(Box::new(obj), field),
+GField: FieldNode = {
+    <l:@L> <obj:GIdent> "." <field:GIdent> <r:@R> => FieldNode{typeval: None, span: Span(l, r), field: Field::Direct(obj, field)},
+    <l:@L> <obj:GField> "." <field:GIdent> <r:@R> => FieldNode{typeval: None, span: Span(l, r), field: Field::Indirect(Box::new(obj), field)},
 };
 
 GMemLoc: MemLoc = {
@@ -177,7 +177,7 @@ GType: TypeSpecifier = {
     <l:@L> "int" <r:@R>     => TypeSpecifier::new(l, r, Type::Int),
     <l:@L> "boolean" <r:@R> => TypeSpecifier::new(l, r, Type::Bool),
     <l:@L> "string" <r:@R>  => TypeSpecifier::new(l, r, Type::Str),
-    <l:@L> <i:GIdent> <r:@R> => TypeSpecifier::new(l, r, Type::Struct(i)),
+    <l:@L> <i:GIdent> <r:@R> => TypeSpecifier::new(l, r, Type::Class(i)),
 }
 
 GVoid: TypeSpecifier = {

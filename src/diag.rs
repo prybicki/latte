@@ -44,7 +44,7 @@ pub fn gen_undeclared_variable_in_stmt(ident: &ast::Ident, span: ast::Span) -> D
 pub fn gen_invalid_expression_type(expected: &ast::Type, actual: &ast::ExpTypeVal, span: ast::Span) -> Diagnostic {
     Diagnostic {
         message: format!("invalid expression type"),
-        details: Some((span, format!("expected {}, got {}", expected, actual)))
+        details: Some((span, format!("expected {}, found {}", expected, actual)))
     }
 }
 

@@ -55,7 +55,7 @@ pub enum ExpTypeVal {
     Int(Option<i32>),
     Bool(Option<bool>),
     Str(Option<String>),
-    Struct(Ident), // value not supported
+    Class(Ident), // value not supported
     Void,
     Invalid,
 }
@@ -70,7 +70,7 @@ impl TryInto<Type> for &ExpTypeVal {
             ExpTypeVal::Int(_) => Ok(Type::Int),
             ExpTypeVal::Bool(_) => Ok(Type::Bool),
             ExpTypeVal::Str(_) => Ok(Type::Str),
-            ExpTypeVal::Struct(ident) => Ok(Type::Struct(ident.clone()))
+            ExpTypeVal::Class(ident) => Ok(Type::Class(ident.clone()))
         }
     }
 }
@@ -82,7 +82,7 @@ impl ExpTypeVal {
             Type::Bool    => ExpTypeVal::Bool(None),
             Type::Str     => ExpTypeVal::Str(None),
             Type::Void    => ExpTypeVal::Void,
-            Type::Struct(ident) => ExpTypeVal::Struct(ident.clone())
+            Type::Class(ident) => ExpTypeVal::Class(ident.clone())
         }
     }
 
@@ -92,7 +92,8 @@ impl ExpTypeVal {
             (ExpTypeVal::Bool(_), &Type::Bool) => true,
             (ExpTypeVal::Str(_), &Type::Str) => true,
             (ExpTypeVal::Void, &Type::Void) => true,
-            _ => false,
+            (ExpTypeVal::Class(a), &Type::Class(ref b)) => a == b,
+            _ => false
         }
     }
 
@@ -114,13 +115,20 @@ pub struct ExpNode {
 #[derive(Debug)]
 pub enum Field {
     Direct(Ident, Ident),
-    Indirect(Box<Field>, Ident),
+    Indirect(Box<FieldNode>, Ident),
+}
+
+#[derive(Debug)]
+pub struct FieldNode {
+    pub span: Span,
+    pub field: Field,
+    pub typeval: Option<ExpTypeVal>,
 }
 
 #[derive(Debug)]
 pub enum MemLoc {
     Var(Ident),
-    Field(Box<Field>)
+    Field(Box<FieldNode>)
 }
 
 #[derive(Debug)]
@@ -168,7 +176,7 @@ pub struct Span(pub usize, pub usize);
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum Type {
-    Struct(Ident),
+    Class(Ident),
     Int,
     Bool,
     Str,
@@ -291,7 +299,7 @@ impl Display for ExpTypeVal {
             ExpTypeVal::Str(_) => write!(f, "string"),
             ExpTypeVal::Void => write!(f, "void"),
             ExpTypeVal::Invalid => write!(f, "<invalid>"),
-            ExpTypeVal::Struct(ident) => write!(f, "struct {}", ident),
+            ExpTypeVal::Class(ident) => write!(f, "struct {}", ident),
         }
     }
 }
@@ -303,7 +311,7 @@ impl Display for Type {
             Type::Bool => write!(f, "boolean"),
             Type::Str => write!(f, "string"),
             Type::Void => write!(f, "void"),
-            Type::Struct(ident) => write!(f, "struct {}", ident),
+            Type::Class(ident) => write!(f, "struct {}", ident),
         }
     }
 }
