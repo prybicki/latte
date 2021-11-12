@@ -1,4 +1,4 @@
-# Implementation of a simble C-like language compiler in Rust
+# Implementation of a simple C-like language compiler in Rust
 
 # Polish documentation:
 
