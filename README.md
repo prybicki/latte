@@ -1,3 +1,7 @@
+# Implementation of a simble C-like language compiler in Rust
+
+# Polish documentation:
+
 1) Frontend: src/frontend.rs
 2) Backend: src/backend.rs
     użycie rejestrów i phi zamiast alloc: TAK
